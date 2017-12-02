@@ -1,0 +1,5 @@
+Common tags used in these files are:
+	@OPTIMIZE	- place where the operations could be performed significantly faster
+	@CONSTANT	- set of operations that use built in constants
+	@CHANGE		- misc tag to define other things that need to be done
+	@IN_PROGRESS- self explanatory
