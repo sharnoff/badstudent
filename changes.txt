@@ -1,0 +1,17 @@
+List of ongoing changes in the code:
+	r - refactoring
+	o - optimizing
+
+	All being done in one fell swoop:
+	r 	Segment function members to take fewer parameters
+	r 	Segment.inputDeltas() to output a channel
+	r/o	Segment.inValues to share the base array with the values of the inputs
+			- Network.inputs/outputs to be a singular slice, in the same manner
+			-> Obviously, this can't always work, but it should for most of the time
+	r	SegmentType to be in accordance with the changes to Network.NewSegment
+	r	some Segment methods to use setAllCalcAbove()
+
+	Something to add in: allow for different error functions (other than just squared error)
+
+The reason I'm not using github issues is that I prefer to have the things that I'm working on closer to me,
+and the fact that no one else is working on this means that it doesn't matter.

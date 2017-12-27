@@ -1,76 +1,62 @@
 package smartlearning
 
 import (
-	errs "FromGithub/errors"
-	"fmt"
+	"github.com/pkg/errors"
 	"sort"
 )
 
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
-	if len(inputs) != net.numInputs {
-		return nil, errs.Errorf("len(inputs) != net.numInputs (%d != %d)")
+	if len(inputs) != len(net.inputs) {
+		return nil, errors.Errorf("couldn't get outputs: len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
 	}
 
-	end := 0
-	for i, in := range net.inputs {
-		start := end
-		end += len(in.values)
-		if end > net.numInputs {
-			return nil, errs.Errorf("ending for input %d is out of the bounds of the inputs (%d > %d)", i, end, net.numInputs)
+	ind := 0
+	for i, in := range net.inSegments {
+		end := ind + len(in.values)
+		if end > len(net.inputs) {
+			return nil, errors.Errorf("arcane error in (*Network).GetOutputs(): end > len(net.inputs) for net input %d (name: %s) (%d > %d)", i, in.name, end, len(net.inputs))
 		}
-		err := in.SetValues(inputs[start:end])
+		err := in.SetValues(inputs[ind:end])
 		if err != nil {
-			return nil, errs.Wrap(err, fmt.Sprintf("tried to set values of net input %d. starting index: %d, ending index: %d, number of inputs: %d", i, start, end, net.numInputs))
+			return nil, errors.Wrapf(err, "couldn't set values of net input %d (name: %s)\n", i, in.name)
 		}
+		ind = end
 	}
 
-	setRange := func(base, sl []float64, start int) (int, error) {
-		if start+len(sl) >= len(base) {
-			return 0, errs.Errorf("start + len(sl) >= len(base) (%d + %d >= %d)", start, len(sl), len(base))
-		}
-
-		for i := range sl {
-			base[start+i] = sl[i]
-		}
-
-		return start + len(sl), nil
+	results := make([]chan error, len(net.outSegments))
+	for i, o := range net.outSegments {
+		results[i] = make(chan error)
+		go o.Calculate(results[i])
 	}
-
-	// @OPTIMIZE: at setup, the outputs' values could all be subsets of the same slice
-	outputs := make([]float64, net.numOutputs)
-	index := 0
-	for i, o := range net.outputs {
-
-		outs, err := o.Values()
+	for i, ch := range results {
+		err := <-ch
 		if err != nil {
-			return nil, errs.Wrap(err, fmt.Sprintf("tried to get values of output net output %d", i))
-		}
-
-		index, err = setRange(outputs, outs, index)
-		if err != nil {
-			return nil, errs.Wrap(err, "tried to set output values")
+			return nil, errors.Wrapf(err, "couldn't calculate net output %d (name: %s)\n", i, net.outSegments[i].name)
 		}
 	}
 
-	return outputs, nil
+	return net.outputs, nil
 }
 
 func (net *Network) AdjustToTargets(targets []float64, learningRate float64) error {
-	if net.numOutputs != len(targets) {
-		return errs.Errorf("net.numOutputs != len(targets) (%d != %d)", net.numOutputs, len(targets))
+	if len(net.outputs) != len(targets) {
+		return errors.Errorf("can't adjust to targets : len(net.outputs) != len(targets) (%d != %d)", len(net.outputs), len(targets))
 	}
 
-	for i, in := range net.inputs {
-		err := in.CalcDeltas(net, targets)
-		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("tried to calculate delta of net input %d", i))
-		}
+	err := net.GenerateDeltas(targets)
+	if err != nil {
+		return errors.Wrap(err, "could not generate deltas\n")
 	}
 
-	for i, o := range net.outputs {
-		err := o.Adjust(learningRate, true) // 'true' means that it will recurse downwards
+	results := make([]chan error, len(net.outSegments))
+	for i, o := range net.outSegments {
+		results[i] = make(chan error)
+		go o.Adjust(learningRate, true, results[i]) // 'true' means that it will recurse downwards
+	}
+	for i, ch := range results {
+		err := <-ch
 		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("tried to adjust net output %d with downward recursion", i))
+			return errors.Wrapf(err, "coudn't adjust net output %d (name: %s)\n", i, net.outSegments[i].name)
 		}
 	}
 
@@ -106,10 +92,6 @@ func sortValues(vs []float64, duplicate bool) []int {
 	sort.Sort(arr)
 	return arr.indexes
 }
-// // not actually needed
-// func (net *Network) SortOutupts() []int {
-// 	return sortValues(net.outputs, true)
-// }
 
 type Datum struct {
 	Inputs, Outputs []float64
@@ -118,18 +100,18 @@ type Datum struct {
 // @CHANGE : allow for changing learning rates
 // @CHANGE : allow for different error functions
 // returns: average squared error, percentage correct, error
-func (net *Network) Train(data []Datum, learningRate float64) (float64, float64, error) {
+func (net *Network) Train(data []*Datum, learningRate float64) (float64, float64, error) {
 	percentCorrect, avgErr := 0.0, 0.0
 
 	for i, d := range data {
 		// doesn't need to check inputs bc GetOutputs() does that
-		if len(d.Outputs) != net.numOutputs {
-			return 0, 0, errs.Errorf("len(d.Outputs) != net.numOutputs (%d != %d) - at datum %d", len(d.Outputs), net.numOutputs, i)
+		if len(d.Outputs) != len(net.outputs) {
+			return 0, 0, errors.Errorf("len(d.Outputs) != len(net.outputs) (%d != %d) - at datum %d", len(d.Outputs), len(net.outputs), i)
 		}
 
 		outs, err := net.GetOutputs(d.Inputs)
 		if err != nil {
-			return 0, 0, errs.Wrap(err, fmt.Sprintf("tried to get the outputs of the network at datum %d", i))
+			return 0, 0, errors.Wrapf(err, "tried to get the outputs of the network at datum %d\n", i)
 		}
 
 		// @CHANGE : should allow for multiple correct answers (see net.Test())
@@ -137,7 +119,7 @@ func (net *Network) Train(data []Datum, learningRate float64) (float64, float64,
 		// this following line could be more efficient, but it's needed for later features
 		testRankings := sortValues(d.Outputs, true)
 		// if the answer was correct
-		if rankings[0] != testRankings[0] {
+		if rankings[0] == testRankings[0] {
 			percentCorrect += 100.0 / float64(len(data))
 		}
 		// add to the average squared error
@@ -148,7 +130,7 @@ func (net *Network) Train(data []Datum, learningRate float64) (float64, float64,
 		// correct the network
 		err = net.AdjustToTargets(d.Outputs, learningRate)
 		if err != nil {
-			return 0, 0, errs.Wrap(err, fmt.Sprintf("tried to adjust network with datum %d", i))
+			return 0, 0, errors.Wrapf(err, "tried to adjust network with datum %d\n", i)
 		}
 	}
 
@@ -157,24 +139,24 @@ func (net *Network) Train(data []Datum, learningRate float64) (float64, float64,
 
 // returns: average squared error, percentage correct, error
 // only works with 0s and 1s in outputs for data
-func (net *Network) Test(data []Datum) (float64, float64, error) {
+func (net *Network) Test(data []*Datum) (float64, float64, error) {
 	percentCorrect, avgErr := 0.0, 0.0
 
 	for i, d := range data {
 		// doesn't need to check inputs bc GetOutputs() does that
-		if len(d.Outputs) != net.numOutputs {
-			return 0, 0, errs.Errorf("len(d.Outputs) != net.numOutputs (%d != %d) - at datum %d", len(d.Outputs), net.numOutputs, i)
+		if len(d.Outputs) != len(net.outputs) {
+			return 0, 0, errors.Errorf("len(d.Outputs) != len(net.outputs) (%d != %d) - at datum %d", len(d.Outputs), len(net.outputs), i)
 		}
 
 		outs, err := net.GetOutputs(d.Inputs)
 		if err != nil {
-			return 0, 0, errs.Wrap(err, fmt.Sprintf("tried to get the outputs of the network at datum %d", i))
+			return 0, 0, errors.Wrapf(err, "tried to get the outputs of the network at datum %d\n", i)
 		}
 
-		// @CHANGE : should allow for multiple correct answers (see net.Train() for more detailed comments)
+		// @CHANGE : should allow for multiple correct answers (see net.Train())
 		rankings := sortValues(outs, true)
 		testRankings := sortValues(d.Outputs, true)
-		if rankings[0] != testRankings[0] {
+		if rankings[0] == testRankings[0] {
 			percentCorrect += 100.0 / float64(len(data))
 		}
 		sqrdErr, _ := SquaredError(outs, d.Outputs)

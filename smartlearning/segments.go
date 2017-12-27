@@ -1,123 +1,147 @@
 package smartlearning
 
 import (
-	errs "FromGithub/errors"
-	"fmt"
+	"github.com/pkg/errors"
 )
 
 func (s *Segment) SetValues(newVals []float64) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if len(newVals) != len(s.values) {
-		return errs.Errorf("len(newVals) != len(s.values)")
+		return errors.Errorf("can't set values for segment; len(newVals) != len(s.values) (%d != %d)", len(newVals), len(s.values))
 	}
 
 	changed := false
 	for i, v := range newVals {
 		if s.values[i] != v {
 			changed = true
-			break
+			s.values[i] = v
 		}
 	}
-	s.values = newVals
 
 	if changed == true {
-		s.calc = evaluated
-
-		// update all of the outputs to s with 'inputsChanged'
-		var update func(s *Segment)
+		// update all outputs of s with 'inputsChanged'
+		var update func(*Segment)
 		update = func(s *Segment) {
-			s.calc = inputsChanged
-			for _, o := range s.outputs {
-				update(o)
+			if s.calc != inputsChanged {
+				s.calc = inputsChanged
+				for _, o := range s.outputs {
+					update(o)
+				}
 			}
 		}
 
 		update(s)
+
+		s.calc = evaluated // to make sure that these values stay here
 	}
 
 	return nil
 }
 
-func (s *Segment) Calculate() error {
-	if s.inputs == nil || s.calc >= evaluated {
-		return nil
+func (s *Segment) Calculate(result chan error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	if s.calc == evaluated {
+		result <- nil
+		return
+	} else if s.inputs == nil {
+		s.calc = evaluated
+		result <- nil
+		return
 	}
 
-	ivi := 0
-	for i, in := range s.inputs { // @OPTIMIZE : definitely needs to be multi-threaded... use sync.Mutex locks
-		err := in.Calculate()
+	results := make([]chan error, len(s.inputs))
+	for i, in := range s.inputs {
+		results[i] = make(chan error)
+		go in.Calculate(results[i])
+	}
+	// check that nothing err'd and copy the values if it needs to
+	ind := 0 // only used if !inputsIdentical
+	for i, c := range results {
+		err := <-c
 		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("from input %d", i))
+			result <- errors.Wrapf(err, "tried to calculate input %d (name: %s)\n", i, s.inputs[i].name)
+			return
 		}
 
-		for iv := range in.values { // @OPTIMIZE : should only update inValues if in's values have changed
-			s.inValues[ivi] = in.values[iv]
-			ivi++
+		if !s.inputsIdentical {
+			for inv := range s.inputs[i].values {
+				s.inVals[ind] = s.inputs[i].values[inv]
+				ind++
+			}
 		}
 	}
 
-	// calculate isn't a method, it's a member of the structure
-	err := s.calculate(s)
+	err := s.calculate()
 	if err != nil {
-		return err
+		result <- err
+		return
 	}
 
 	s.calc = evaluated
-	return nil
+	result <- nil
+	return
 }
 
 // essentially Calculate(), but doesn't change if adjustments have been made
 func (s *Segment) Values() ([]float64, error) {
-	if s.calc < evaluated {
-		err := s.Calculate()
-		return s.values, err
+	if s.calc >= evaluated {
+		return s.values, nil
 	}
+
+	result := make(chan error)
+	s.Calculate(result)
+	err := <-result
+	if err != nil {
+		return nil, errors.Wrap(err, "couldn't calculate segment\n")
+	}
+
 	return s.values, nil
 }
 
-func (s *Segment) CalcDeltas(net *Network, targetOutputs []float64) error {
+func (net *Network) CalcDeltas(s *Segment, targetOutputs []float64) error {
 	if s.calc >= delta {
 		return nil
 	}
 
-	if len(targetOutputs) != net.numOutputs {
-		return errs.Errorf("differing number of target outputs to actual outputs : len(targetOutputs) != net.numOutputs (%d != %d)", len(targetOutputs), net.numOutputs)
+	if len(targetOutputs) != len(net.outputs) {
+		return errors.Errorf("differing number of target outputs to actual outputs : len(targetOutputs) != len(net.outputs) (%d != %d)", len(targetOutputs), len(net.outputs))
 	}
 
-	err := s.Calculate()
-	if err != nil {
-		return errs.Wrap(err, "tried to update value")
+	// makes sure that the values are up to date
+	if s.calc != evaluated {
+		return errors.Errorf("Segments need to be calculated before deltas. \"%s\".calc == %d", s.name, int8(s.calc))
 	}
 
-	addTo := func(a, b []float64) error {
-		if len(a) != len(b) {
-			return errs.Errorf("can't add: len(a) != len(b) (%d != %d)", len(a), len(b))
-		}
-
-		for i := range a {
-			a[i] += b[i]
-		}
-		
-		return nil
-	}
-
-	s.deltas = make([]float64, len(s.deltas)) // set all of the values to 0
-
+	results := make([]chan error, len(s.outputs))
+	newDeltas := make([][]float64, len(s.outputs))
 	for i, o := range s.outputs {
-		deltaFromHigher, err := o.GetInputDeltas(net, s, targetOutputs)
+		results[i] = make(chan error)
+		newDeltas[i] = make([]float64, len(s.deltas))
+		go net.GetInputDeltas(o, s, targetOutputs, newDeltas[i], results[i])
+	}
+
+	for i, ch := range results {
+		err := <-ch
 		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("couldn't get deltas from output %d", i))
-		}
-		err = addTo(s.deltas, deltaFromHigher)
-		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("couldn't add to s.deltas from output %d", i))
+			return errors.Wrapf(err, "couldn't get input deltas from segment output %d (name: %s)\n", i, s.outputs[i].name)
 		}
 	}
 
-	// if it's an output segment, also add the deltas from that
+	for i := range s.deltas {
+		s.deltas[i] = 0
+		for _, d := range newDeltas {
+			s.deltas[i] += d[i]
+		}
+	}
+
 	if s.isOutput {
 		// figure out which outputs are the values that it should be looking for
 		offset := 0
-		for _, o := range net.outputs {
+		for _, o := range net.outSegments {
 			if o != s {
 				offset += len(o.values)
 			} else {
@@ -125,63 +149,105 @@ func (s *Segment) CalcDeltas(net *Network, targetOutputs []float64) error {
 			}
 		}
 
-		if offset+len(s.deltas) >= net.numOutputs {
-			return errs.Errorf("Couldn't find segment in the network's outputs : offset + len(s.values) >= net.numOutputs (%d + %d >= %d)", offset, len(s.values), net.numOutputs)
+		if offset+len(s.deltas) > len(net.outputs) {
+			return errors.Errorf("Couldn't find segment in the network's outputs : offset + len(s.values) >= len(net.outputs) (%d + %d >= %d)", offset, len(s.values), len(net.outputs))
 		}
 
 		// add to all of the deltas : current value - target value
 		for i := range s.deltas {
-			//@CONSTANT : assumes that it is optimizing for the squared error function 
+			//@CONSTANT : assumes that it is optimizing for the squared error function
 			//@CHANGE   : allow for other error functions
 			s.deltas[i] += s.values[i] - targetOutputs[offset+i]
 		}
 	}
 
+	s.calc = delta
 	return nil
 }
 
-// @CHANGE : could change this so that it outputs a channel, so that the values can be processed with greater ease
-func (s *Segment) GetInputDeltas(net *Network, in *Segment, targetOutputs []float64) ([]float64, error) {
-	err := s.CalcDeltas(net, targetOutputs)
+// outputs to deltas
+func (net *Network) GetInputDeltas(s *Segment, in *Segment, targetOutputs, deltas []float64, result chan error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	err := net.CalcDeltas(s, targetOutputs)
 	if err != nil {
-		return nil, errs.Wrap(err, "tried to calculate s.deltas")
+		result <- errors.Wrap(err, "Couldn't calculate own deltas\n")
+		return
 	}
 
-	return s.inputDeltas(s, in)
+	ind := 0
+	for i := range s.inputs {
+		if s.inputs[i] == in {
+			ind = i
+			goto Found
+		}
+	}
+	result <- errors.New("Couldn't find given input in inputs of segment")
+	return
+
+Found:
+	err = s.inputDeltas(ind, deltas)
+	result <- err
+	return
 }
 
 func (net *Network) GenerateDeltas(targetOutputs []float64) error {
-	for i, in := range net.inputs {
-		err := in.CalcDeltas(net, targetOutputs)
+	results := make([]chan error, len(net.outSegments))
+	for i, o := range net.outSegments {
+		results[i] = make(chan error)
+		go o.Calculate(results[i])
+	}
+	for i, ch := range results {
+		err := <-ch
 		if err != nil {
-			return errs.Wrap(err, fmt.Sprintf("error from input %d", i))
+			return errors.Wrapf(err, "couldn't calculate net output %d - \"%s\"\n", i, net.outSegments[i].name)
+		}
+	}
+
+	for i, in := range net.inSegments {
+		err := net.CalcDeltas(in, targetOutputs)
+		if err != nil {
+			return errors.Wrapf(err, "error from input %d\n", i)
 		}
 	}
 
 	return nil
 }
 
-func (s *Segment) Adjust(learningRate float64, recurseDown bool) error {
+func (s *Segment) Adjust(learningRate float64, recurseDown bool, result chan error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if s.calc < delta {
-		return errs.New("can't adjust because deltas haven't been calculated yet")
+		result <- errors.New("can't adjust because deltas haven't been calculated yet")
+		return
 	}
 
 	if s.calc < weightsChanged {
-		err := s.adjust(s, learningRate)
+		err := s.adjust(learningRate)
 		if err != nil {
-			return err
+			result <- err
+			return
 		}
 	}
 
 	if recurseDown {
-		// @OPTIMIZE: needs to be multi-threaded, similar to (*Segment).Calculate
+		results := make([]chan error, len(s.inputs))
 		for i, in := range s.inputs {
-			err := in.Adjust(learningRate, recurseDown)
+			results[i] = make(chan error)
+			go in.Adjust(learningRate, recurseDown, results[i])
+		}
+
+		for i, ch := range results {
+			err := <-ch
 			if err != nil {
-				return errs.Wrap(err, fmt.Sprintf("tried to adjust input %d with downward recursion", i))
+				result <- errors.Wrapf(err, "tried to adjust input %d with downward recursion (name: %s)\n", i, s.inputs[i].name)
+				return
 			}
 		}
 	}
 
-	return nil
+	result <- nil
+	return
 }

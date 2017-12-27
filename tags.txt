@@ -3,3 +3,6 @@ Common tags used in these files are:
 	@CONSTANT	- set of operations that use built in constants
 	@CHANGE		- misc tag to define other things that need to be done
 	@IN_PROGRESS- self explanatory
+
+These are mainly to help me, so that I can access all of the changes that I'm planning on making without 
+internet or a need to consult github
