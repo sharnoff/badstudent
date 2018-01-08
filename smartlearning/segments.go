@@ -2,252 +2,774 @@ package smartlearning
 
 import (
 	"github.com/pkg/errors"
+	"sync"
 )
 
-func (s *Segment) SetValues(newVals []float64) error {
-	s.mux.Lock()
-	defer s.mux.Unlock()
+type Segment struct {
+	Name string
 
-	if len(newVals) != len(s.values) {
-		return errors.Errorf("can't set values for segment; len(newVals) != len(s.values) (%d != %d)", len(newVals), len(s.values))
-	}
+	Values    []float64
+	Weights   []float64
+	Deltas    []float64
+	InVals    []float64 // set of all input values to this segment
+	InputDims [][]int
+	NumVpI    []int // number of values from each input to this segment
+	Dims      []int
 
-	changed := false
-	for i, v := range newVals {
-		if s.values[i] != v {
-			changed = true
-			s.values[i] = v
-		}
-	}
+	id int // for future use in saving to a file / getting from a file
 
-	if changed == true {
-		// update all outputs of s with 'inputsChanged'
-		var update func(*Segment)
-		update = func(s *Segment) {
-			if s.calc != inputsChanged {
-				s.calc = inputsChanged
-				for _, o := range s.outputs {
-					update(o)
-				}
-			}
-		}
+	inputs      []*Segment
+	outputs     []*Segment
+	isOutput    bool
+	outValStart int // the index in net.outputs that the values of the segment start at
 
-		update(s)
+	inputsIdentical bool       // true if InVals and inputs point to the same memory space as inputs[].Values
+	memBlock        *[]*Segment // the set of other segments (and itself) that this is located with
+	valueSet        []float64
 
-		s.calc = evaluated // to make sure that these values stay here
-	}
+	prog    map[command]progress
+	progMux sync.Mutex
+	comLine chan commandWrapper
 
-	return nil
+	// these methods are what are set by 'setMethods' and run more than just the SemgentType
+	// portion of the methods
+	evaluate    func(chan resultWrapper, []interface{})
+	inputDeltas func(chan resultWrapper, []interface{})
+	adjust      func(chan resultWrapper, []interface{})
+	typ         SegmentType
 }
 
-func (s *Segment) Calculate(result chan error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
+// 'origin' is the command that was executed to return this
+// 'res' is short for 'result'
+// 'crit' is whether or not the error error (if there was one) was critical
+// 		if crit is true, the segment will mark that process as 'done'
+type resultWrapper struct {
+	origin command
+	res    error
+	crit   bool
+}
 
-	if s.calc == evaluated {
-		result <- nil
+type progress int
+
+const (
+	notStarted progress = iota
+	inProgress progress = iota
+	done       progress = iota
+)
+
+// need to implement some way to handle errors based on whether they're critical or not
+func (s *Segment) run(init chan error) {
+	if s.comLine == nil {
+		init <- errors.Errorf("Can't run segment, comLine hasn't been initialized")
+		close(init)
 		return
-	} else if s.inputs == nil {
-		s.calc = evaluated
-		result <- nil
-		return
+	} else {
+		init <- nil
+		close(init)
 	}
 
-	results := make([]chan error, len(s.inputs))
-	for i, in := range s.inputs {
-		results[i] = make(chan error)
-		go in.Calculate(results[i])
+	s.progMux.Lock()
+	s.prog = make(map[command]progress)
+	s.progMux.Unlock()
+
+	resLine := make(chan resultWrapper)
+	funcs := map[command]func(*Segment, chan resultWrapper, []interface{}){
+		checkOutputs:     func(s *Segment, res chan resultWrapper, aux []interface{}) { s.checkOutputs(res, aux) },
+		allocate:         func(s *Segment, res chan resultWrapper, aux []interface{}) { s.allocate(res, aux) },
+		finishAllocating: func(s *Segment, res chan resultWrapper, aux []interface{}) { s.finishAllocating(res, aux) },
+		setMethods:       func(s *Segment, res chan resultWrapper, aux []interface{}) { s.setMethods(res, aux) },
+		inputsChanged:    func(s *Segment, res chan resultWrapper, aux []interface{}) { s.inputsChanged(res, aux) },
+		evaluate:         func(s *Segment, res chan resultWrapper, aux []interface{}) { s.evaluate(res, aux) },
+		deltas:           func(s *Segment, res chan resultWrapper, aux []interface{}) { s.deltas(res, aux) },
+		inputDeltas:      func(s *Segment, res chan resultWrapper, aux []interface{}) { s.inputDeltas(res, aux) },
+		adjust:           func(s *Segment, res chan resultWrapper, aux []interface{}) { s.adjust(res, aux) },
 	}
-	// check that nothing err'd and copy the values if it needs to
-	ind := 0 // only used if !inputsIdentical
-	for i, c := range results {
-		err := <-c
-		if err != nil {
-			result <- errors.Wrapf(err, "tried to calculate input %d (name: %s)\n", i, s.inputs[i].name)
-			return
+
+	// this doesn't need to be initialized because we can append to a nil slice
+	returnChs := make(map[command][]chan error)
+
+	pastSetup := false
+
+	select {
+	case c := <-s.comLine:
+		if c.com == 0 { // if nil
+			go func() { c.res <- errors.Errorf("Couldn't run command to segment %s, com = nil.", s.Name) }()
+			break
+		} else if !c.com.isSetup() && !c.com.isRunning() {
+			go func() {
+				c.res <- errors.Errorf("Coudln't run command to segment %s, unknown command: %s", s.Name, c.com.String())
+			}()
+			break
+		} else if pastSetup != c.com.isRunning() {
+			go func() {
+				c.res <- errors.Errorf("Couldn't run command to segment %s, command doesn't match phase (setup/running) running: %t. (command: %s)", s.Name, pastSetup, c.com.String())
+			}()
+			break
 		}
 
-		if !s.inputsIdentical {
-			for inv := range s.inputs[i].values {
-				s.inVals[ind] = s.inputs[i].values[inv]
-				ind++
+		s.progMux.Lock()
+		if s.prog[c.com] == done {
+			s.progMux.Unlock()
+			go func() { c.res <- nil }()
+			break
+		}
+		returnChs[c.com] = append(returnChs[c.com], c.res)
+		if s.prog[c.com] == inProgress {
+			s.progMux.Unlock()
+			break
+		}
+		s.prog[c.com] = inProgress
+		s.progMux.Unlock()
+
+		go funcs[c.com](s, resLine, c.aux)
+	case r := <-resLine:
+		var err error
+		if r.res != nil {
+			if r.crit {
+				err = errors.Wrapf(r.res, "Critical error from s.%s() for segment %s\n", r.origin.String(), s.Name)
+			} else {
+				err = errors.Wrapf(r.res, "Non-critical error from s.%s() for segment %s\n", r.origin.String(), s.Name)
 			}
 		}
-	}
 
-	err := s.calculate()
-	if err != nil {
-		result <- err
+		s.progMux.Lock()
+		if r.res != nil && r.crit {
+			s.prog[r.origin] = notStarted
+		} else {
+			s.prog[r.origin] = done
+		}
+		s.progMux.Unlock()
+
+		for _, ch := range returnChs[r.origin] {
+			go func() { ch <- err }()
+		}
+
+		if r.origin.isSetup() && r.origin.isRunning() {
+			pastSetup = true
+		}
+	}
+}
+
+// checkOutputs does nothing with aux
+// recurses towards outputs
+// checkOutputs just makes sure that there are no segments that have no outputs but aren't outputs
+func (s *Segment) checkOutputs(result chan resultWrapper, aux []interface{}) {
+	// perform the actual checking of the outputs
+	if !s.isOutput && s.outputs == nil {
+		err := errors.Errorf("Segment %s has no outputs but is not an output (s.outputs == nil && !s.isOutput)", s.Name)
+		result <- resultWrapper{res: err, origin: checkOutputs, crit: true}
 		return
 	}
 
-	s.calc = evaluated
-	result <- nil
+	// recurse towards outputs
+	results := make([]chan error, len(s.outputs))
+	for i, out := range s.outputs {
+		results[i] = make(chan error)
+		go func() { out.comLine <- commandWrapper{com: checkOutputs, res: results[i]} }()
+	}
+	for i, ch := range results {
+		if err := <-ch; err != nil {
+			err = errors.Wrapf(err, "Error in attempting to check outputs of segment %s from segment %s\n", s.outputs[i].Name, s.Name)
+			result <- resultWrapper{origin: checkOutputs, res: err}
+		}
+	}
+
+	result <- resultWrapper{origin: checkOutputs}
 	return
 }
 
-// essentially Calculate(), but doesn't change if adjustments have been made
-func (s *Segment) Values() ([]float64, error) {
-	if s.calc >= evaluated {
-		return s.values, nil
+// allocate 'returns' error if aux[0] is not type *[]*[]*Segment
+// allocate calls checkOutputs (through s.comLine) if s.prog[checkOutpus] != done
+// recurses towards inputs
+func (s *Segment) allocate(result chan resultWrapper, aux []interface{}) {
+	// if it hasn't checked outputs, do that
+	s.progMux.Lock()
+	if s.prog[checkOutputs] != done {
+		s.progMux.Unlock()
+		res := make(chan error)
+		s.comLine <- commandWrapper{com: checkOutputs, res: res}
+		if err := <-res; err != nil {
+			err = errors.Wrapf(err, "Couldn't check outputs before trying to allocate segment %s\n", s.Name)
+			result <- resultWrapper{origin: allocate, res: err}
+			return
+		}
+	} else {
+		s.progMux.Unlock()
 	}
 
-	result := make(chan error)
-	s.Calculate(result)
-	err := <-result
-	if err != nil {
-		return nil, errors.Wrap(err, "couldn't calculate segment\n")
+	// set memBlocks to aux[0], so long as it is type *[]*[]*Segment
+	var memBlocks *[]*[]*Segment
+	var ok bool
+
+	// if it's already been allocated (which is likely if it's either an input or an output segment)
+	// then recurse downwards
+	// we have to do this here so that we don't skip variable delcarations
+	if s.memBlock != nil {
+		goto Recurse
 	}
 
-	return s.values, nil
+	if len(aux) == 0 {
+		err := errors.Errorf("Can't allocate segment %s, len(aux) == 0. Allocate requires aux[0] to be type %T", s.Name, memBlocks)
+		result <- resultWrapper{origin: allocate, res: err}
+		return
+	} else if memBlocks, ok = aux[0].(*[]*[]*Segment); !ok {
+		err := errors.Errorf("Can't allocate segment %s, aux[0] is not type %T (%T)", s.Name, memBlocks, aux[0])
+		result <- resultWrapper{origin: allocate, res: err}
+	}
+
+	// the bulk of the allocating:
+	{
+		// check to see how many of the inputs have already been allocated
+		indAlloc := make([]int, 0, len(s.inputs))
+		for i, in := range s.inputs {
+			if in.memBlock != nil {
+				indAlloc = append(indAlloc, i)
+			}
+		}
+
+		// if nothing's been allocated, then allocate the whole set and be done
+		if len(indAlloc) == 0 {
+			// add the whole set of inputs to memBlock
+			newMb := make([]*Segment, len(s.inputs))
+			// probably not necessary, but good practice considering this only gets run once
+			copy(newMb, s.inputs)
+
+			for _, in := range s.inputs {
+				in.memBlock = &newMb
+			}
+
+			*memBlocks = append(*memBlocks, &newMb)
+			s.inputsIdentical = true
+		} else {
+			// in general for this section:
+			// if the inputs can be added to the memBlock of the ones already allocated,
+			// do that
+			// 'goto Recurse' is used instead of returning a non-error,
+			// because the inputs still need to allocate()
+
+			// check that all of the inputs that have already been allocated are in the same segment
+			mb := s.inputs[indAlloc[0]].memBlock
+			for _, i := range indAlloc {
+				if s.inputs[i].memBlock != mb { // compare equality
+					goto Recurse
+				}
+			}
+
+			// now that we know that all of the inputs that have already been allocated are in the same
+			// memBlock, check that they are aligned (continuous) in physical memory
+
+			// check for continuity in indAlloc
+			// this is to make sure that the rest of the inputs could actually be added
+			for i := 0; i < len(indAlloc)-1; i++ {
+				if indAlloc[i+1] != indAlloc[i]+1 {
+					goto Recurse
+				}
+			}
+
+			// find the index in mb of the first allocated input (indAlloc[0])
+			start := -1
+			for i, seg := range *mb {
+				if seg == s.inputs[indAlloc[0]] {
+					start = i
+					break
+				}
+			}
+			if start == -1 {
+				err := errors.Errorf("Couldn't allocate semgent %s due to critical error - first allocated input segment (%s) not in own memBlock", s.Name, s.inputs[indAlloc[0]].Name)
+				result <- resultWrapper{origin: allocate, res: err, crit: true}
+				return
+			}
+
+			// check that set of inputs in indAlloc are physically
+			// aligned in the same way in mb
+			for i := 0; i < len(indAlloc); i++ {
+				if (*mb)[start+i] != s.inputs[indAlloc[i]] {
+					goto Recurse
+				}
+			}
+
+			// check that it can be appended to either the beginning or the end of mb (or both)
+			if indAlloc[0] != 0 && start != 0 {
+				// if it can't append below the indAlloc set
+				goto Recurse
+			} else if indAlloc[len(indAlloc)-1] != len(s.inputs)-1 && start+len(indAlloc) != len(*mb) {
+				// if it can't append above the indAlloc set
+				goto Recurse
+			}
+
+			less := make([]*Segment, indAlloc[0])
+			copy(less, s.inputs[:indAlloc[0]])
+			*mb = append(less, (*mb)...)
+			*mb = append(*mb, s.inputs[indAlloc[len(indAlloc)-1]:]...)
+			for _, in := range s.inputs {
+				in.memBlock = mb
+			}
+
+			s.inputsIdentical = true
+		}
+	}
+Recurse:
+	// recurse towards inputs
+	// this CANNOT BE MULTI-THREADED because it would cause segments to be put into multiple memBlocks
+	for _, in := range s.inputs {
+		res := make(chan error)
+		in.comLine <- commandWrapper{com: allocate, res: res, aux: []interface{}{memBlocks}}
+		if err := <-res; err != nil {
+			err = errors.Wrapf(err, "Failed to allocate input segment %s to segment %s\n", s.Name, in.Name)
+		}
+	}
+	result <- resultWrapper{origin: allocate}
+	return
 }
 
-func (net *Network) CalcDeltas(s *Segment, targetOutputs []float64) error {
-	if s.calc >= delta {
-		return nil
+// finishAllocating 'returns' error if aux[0] is not type map[*[]*Segment][]float64
+// or if aux[1] is not type sync.Mutex
+// if allocate() hasn't been run yet, finishAllocating passes aux[2:] to allocate()
+// recurses before running towards inputs
+func (s *Segment) finishAllocating(result chan resultWrapper, aux []interface{}) {
+	if len(aux) == 0 {
+		err := errors.Errorf("Can't finish allocating segment %s, len(aux) == 0. See documentation for correct values of aux for finishAllocating()", s.Name)
+		result <- resultWrapper{origin: finishAllocating, res: err}
+		return
 	}
 
-	if len(targetOutputs) != len(net.outputs) {
-		return errors.Errorf("differing number of target outputs to actual outputs : len(targetOutputs) != len(net.outputs) (%d != %d)", len(targetOutputs), len(net.outputs))
+	s.progMux.Lock()
+	if s.prog[allocate] != done {
+		s.progMux.Unlock()
+		res := make(chan error)
+		s.comLine <- commandWrapper{com: allocate, res: res, aux: aux[2:]}
+		if err := <-res; err != nil {
+			err = errors.Wrapf(err, "Couldn't allocate segment %s, attempt to allocate segment failed. 'aux' sent to allocate() is equal to aux[2:]\n", s.Name)
+			result <- resultWrapper{origin: finishAllocating, res: err}
+			return
+		}
+	} else {
+		s.progMux.Unlock()
 	}
 
-	// makes sure that the values are up to date
-	if s.calc != evaluated {
-		return errors.Errorf("Segments need to be calculated before deltas. \"%s\".calc == %d", s.name, int8(s.calc))
+	// make sure that:
+	//   aux[0] is type map[*[]*Segment][]float64
+	//   aux[1] is type sync.Mutex
+	var valueSets map[*[]*Segment][]float64
+	var vsMux sync.Mutex
+	var ok bool
+	if valueSets, ok = aux[0].(map[*[]*Segment][]float64); !ok {
+		err := errors.Errorf("Can't finish allocating segment %s, aux[0] is not type %T (%T)", valueSets, aux[0])
+		result <- resultWrapper{origin: finishAllocating, res: err}
+		return
+	} else if vsMux, ok = aux[1].(sync.Mutex); !ok {
+		err := errors.Errorf("Can't finish allocating segment %s, aux[1] is not type %T (%T)", vsMux, aux[1])
+		result <- resultWrapper{origin: finishAllocating, res: err}
+		return
 	}
 
-	results := make([]chan error, len(s.outputs))
-	newDeltas := make([][]float64, len(s.outputs))
-	for i, o := range s.outputs {
+	// recurse before starting, so that all inputs' valueSets are already set
+	// recurses towards inputs
+	results := make([]chan error, len(s.inputs))
+	for i, in := range s.inputs {
 		results[i] = make(chan error)
-		newDeltas[i] = make([]float64, len(s.deltas))
-		go net.GetInputDeltas(o, s, targetOutputs, newDeltas[i], results[i])
+		go func() { in.comLine <- commandWrapper{com: finishAllocating, res: results[i], aux: aux} }()
 	}
-
 	for i, ch := range results {
-		err := <-ch
-		if err != nil {
-			return errors.Wrapf(err, "couldn't get input deltas from segment output %d (name: %s)\n", i, s.outputs[i].name)
+		if err := <-ch; err != nil {
+			err = errors.Wrapf(err, "Couldn't finish allocating segment %s - allocating input segment %s failed.\n", s.Name, s.inputs[i].Name)
+			result <- resultWrapper{origin: finishAllocating, res: err}
+			return
 		}
 	}
 
-	for i := range s.deltas {
-		s.deltas[i] = 0
-		for _, d := range newDeltas {
-			s.deltas[i] += d[i]
+	// finish allocating - set up the segment's values, inValues, and inputs with their new spaces in memory
+	vsMux.Lock()
+	if valueSets[s.memBlock] == nil {
+		var sum int
+		for _, seg := range *(s.memBlock) {
+			sum += len(seg.Values)
+		}
+		valueSets[s.memBlock] = make([]float64, sum)
+	}
+	vsMux.Unlock()
+
+	// find how many other segments and values there are before this segment / its values
+	segBefore, vsBefore := -1, 0
+	for i, seg := range (*s.memBlock) { // it's okay to run this multiple times because this is during setup
+		if seg == s {
+			segBefore = i
+			break
+		}
+
+		vsBefore += len(seg.Values)
+	}
+	if segBefore == -1 {
+		err := errors.Errorf("Couldn't finish allocating segment %s, failed to find segment in own memBlock", s.Name)
+		result <- resultWrapper{origin: finishAllocating, res: err, crit: true}
+		return
+	}
+
+	s.Values = valueSets[s.memBlock][vsBefore : vsBefore+len(s.Values)]
+
+	// set inputs
+	if s.inputsIdentical {
+		segBefore, vsBefore = -1, 0
+		for i, seg := range *(s.inputs[0].memBlock) {
+			if seg == s.inputs[0] {
+				segBefore = i
+				break
+			}
+
+			vsBefore += len(seg.Values)
+		}
+		if segBefore == -1 {
+			err := errors.Errorf("Couldn't finish allocating segment %s, failed to find 0th input (%s) in input's own memBlock", s.Name, s.inputs[0].Name)
+			result <- resultWrapper{origin: finishAllocating, res: err, crit: true}
+			return
+		}
+
+		s.InVals = valueSets[s.inputs[0].memBlock][vsBefore : vsBefore+len(s.InVals)]
+		s.inputs = (*s.inputs[0].memBlock)[segBefore : segBefore + len(s.inputs)]
+	}
+
+	result <- resultWrapper{origin: finishAllocating}
+	return
+}
+
+// setMethods does nothing with aux, except for passing it to finishAllocating() if
+// it hasn't run yet.
+// recurses towards outputs
+func (s *Segment) setMethods(result chan resultWrapper, aux []interface{}) {
+	// if it hasn't finished allocating, pass aux to finishAllocating()
+	s.progMux.Lock()
+	if s.prog[finishAllocating] != done {
+		s.progMux.Unlock()
+		res := make(chan error)
+		s.comLine <- commandWrapper{com: finishAllocating, res: res, aux: aux}
+		if err := <-res; err != nil {
+			err = errors.Wrapf(err, "Couldn't allocate segment %s, attempt to allocate segment failed. 'aux' sent to allocate() is equal to aux[2:]\n", s.Name)
+			result <- resultWrapper{origin: finishAllocating, res: err}
+			return
+		}
+	} else {
+		s.progMux.Unlock()
+	}
+
+	// set the methods (which are actually members of the Segment struct)
+	evaluateFunc, err := s.typ.EvaluateFunc(s)
+	if err != nil {
+		err = errors.Wrapf(err, "Couldn't set methods for segment %s, EvaluateFunc() on s.typ (type %T) failed\n", s.Name, s.typ)
+		result <- resultWrapper{origin: setMethods, res: err}
+		return
+	}
+	inputDeltasFunc, err := s.typ.InputDeltasFunc(s)
+	if err != nil {
+		err = errors.Wrapf(err, "Couldn't set methods for segment %s, InputDeltasFunc() on s.typ (type %T) failed\n", s.Name, s.typ)
+		result <- resultWrapper{origin: setMethods, res: err}
+		return
+	}
+	adjustFunc, err := s.typ.AdjustFunc(s)
+	if err != nil {
+		err = errors.Wrapf(err, "Couldn't set methods for segment %s, AdjustFunc() on s.typ (type %T) failed\n", s.Name, s.typ)
+		result <- resultWrapper{origin: setMethods, res: err}
+		return
+	}
+
+	s.evaluate = func(result chan resultWrapper, aux []interface{}) {
+		s.progMux.Lock()
+		if s.prog[inputsChanged] == notStarted {
+			s.progMux.Unlock()
+			result <- resultWrapper{origin: evaluate}
+			return
+		} else if s.prog[inputsChanged] == inProgress { // make sure that prog[inputsChanged] == done
+			s.progMux.Unlock()
+			res := make(chan error)
+			s.comLine <- commandWrapper{com: inputsChanged, res: res}
+			if err := <-res; err != nil {
+				err = errors.Wrapf(err, "Couldn't evaluate segment %s - failed to finish notifying that inputsChanged\n", s.Name)
+				result <- resultWrapper{origin: evaluate, res: err}
+				return
+			}
+		} else {
+			s.progMux.Unlock()
+		}
+
+		// recurse downwards, so that inVals have been calculated
+		results := make([]chan error, len(s.inputs))
+		for i, in := range s.inputs {
+			results[i] = make(chan error)
+			go func() { in.comLine <- commandWrapper{com: evaluate, res: results[i]} }()
+		}
+		for i, ch := range results {
+			if err := <-ch; err != nil {
+				err = errors.Wrapf(err, "Couldn't evaluate segment %s, evaluating input segment %s failed.\n", s.Name, s.inputs[i].Name)
+				result <- resultWrapper{origin: evaluate, res: err}
+				return
+			}
+		}
+
+		if !s.inputsIdentical {
+			i := 0
+			for _, in := range s.inputs {
+				copy(s.InVals[i:], in.Values) // this is fine because copy just uses
+				i += len(in.Values)
+			}
+		}
+
+		err := evaluateFunc()
+		if err != nil {
+			result <- resultWrapper{origin: evaluate, res: err, crit: true}
+			return
+		}
+
+		s.progMux.Lock()
+		s.prog[inputsChanged] = notStarted
+		s.progMux.Unlock()
+
+		result <- resultWrapper{origin: evaluate}
+		return
+	}
+
+	s.inputDeltas = func(result chan resultWrapper, aux []interface{}) {
+		if len(aux) < 2 {
+			err := errors.Errorf("Couldn't get input deltas of segment %s, len(aux) < 2 (inputDeltas() requires aux[0] to be type *Segment) and aux[1] to be type []float64", s.Name)
+			result <- resultWrapper{origin: inputDeltas, res: err}
+			return
+		}
+
+		s.progMux.Lock()
+		if s.prog[deltas] != done {
+			s.progMux.Unlock()
+			res := make(chan error)
+			s.comLine <- commandWrapper{com: deltas, res: res, aux: aux[2:]}
+			if err := <-res; err != nil {
+				err = errors.Wrapf(err, "Couldn't get input deltas of segment %s, getting own deltas failed (Note: inputDeltas passes aux[2:] to deltas\n", s.Name)
+				result <- resultWrapper{origin: inputDeltas, res: err}
+				return
+			}
+		} else {
+			s.progMux.Unlock()
+		}
+
+		var selectInput *Segment
+		var inputDs []float64
+
+		var ok bool
+		if selectInput, ok = aux[0].(*Segment); !ok {
+			err := errors.Errorf("Couldn't get input deltas of segment %s, aux[0] should be type %T (was type %T)", s.Name, selectInput, aux[0])
+			result <- resultWrapper{origin: inputDeltas, res: err}
+			return
+		} else if inputDs, ok = aux[1].([]float64); !ok {
+			err := errors.Errorf("Couldn't get input deltas of segment %s, aux[1] should be type %T (was type %T)", s.Name, selectInput, aux[1])
+			result <- resultWrapper{origin: inputDeltas, res: err}
+			return
+		}
+
+		// find the index of the selected input
+		inputIndex := -1
+		for i := range s.inputs {
+			if s.inputs[i] == selectInput {
+				inputIndex = i
+				break
+			}
+		}
+		if inputIndex == -1 {
+			err := errors.Errorf("Couldn't get input deltas of segment %s, given segment %s to get deltas for is not an input of %s", s.Name, selectInput.Name, s.Name)
+			result <- resultWrapper{origin: inputDeltas, res: err}
+			return
+		}
+
+		err := inputDeltasFunc(inputIndex, inputDs)
+		if err != nil {
+			result <- resultWrapper{origin: inputDeltas, res: err}
+			return
+		}
+
+		result <- resultWrapper{origin: inputDeltas}
+		return
+	}
+
+	s.adjust = func(result chan resultWrapper, aux []interface{}) {
+		if len(aux) == 0 {
+			err := errors.Errorf("Can't adjust segment %s, len(aux) == 0", s.Name)
+			result <- resultWrapper{origin: adjust, res: err}
+			return
+		}
+
+		s.progMux.Lock()
+		if s.prog[deltas] != done {
+			s.progMux.Unlock()
+			res := make(chan error)
+			s.comLine <- commandWrapper{com: deltas, res: res, aux: aux[2:]}
+			if err := <-res; err != nil {
+				err = errors.Wrapf(err, "Couldn't adjust segment %s, getting own deltas failed (Note: adjust passes aux[1:] to deltas\n", s.Name)
+				result <- resultWrapper{origin: adjust, res: err}
+				return
+			}
+		} else {
+			s.progMux.Unlock()
+		}
+
+		var learningRate float64
+		var ok bool
+		if learningRate, ok = aux[0].(float64); !ok {
+			err := errors.Errorf("Can't adjust segment %s, aux[0] is not type %T (type %T)", s.Name, learningRate, aux[0])
+			result <- resultWrapper{origin: adjust, res: err}
+			return
+		}
+
+		err := adjustFunc(learningRate)
+		if err != nil {
+			result <- resultWrapper{origin: adjust, res: err}
+			return
+		}
+
+		// recurse towards inputs
+		results := make([]chan error, len(s.inputs))
+		for i, in := range s.inputs {
+			results[i] = make(chan error)
+			go func(){ in.comLine <- commandWrapper{adjust, results[i], aux} }()
+		}
+		for i, ch := range results {
+			if err := <-ch; err != nil {
+				err = errors.Wrapf(err, "Couldn't adjust segment %s, recursing to input %s failed\n", s.Name, s.inputs[i].Name)
+				result <- resultWrapper{origin: adjust, res: err}
+				return
+			}
+		}
+
+		result <- resultWrapper{origin: adjust}
+		return
+	}
+
+	// recurse towards outputs
+	results := make([]chan error, len(s.outputs))
+	for i, out := range s.outputs {
+		results[i] = make(chan error)
+		go func() { out.comLine <- commandWrapper{com: setMethods, res: results[i], aux: aux} }()
+	}
+	for i, ch := range results {
+		if err := <-ch; err != nil {
+			err = errors.Wrapf(err, "Failed after setting methods of %s - setting output segment %s failed.\n", s.Name, s.outputs[i].Name)
+			result <- resultWrapper{origin: setMethods, res: err}
+			return
+		}
+	}
+
+	result <- resultWrapper{origin: setMethods}
+	return
+}
+
+// inputsChanged does nothing with aux
+// sets prog[evaluate, deltas, inputDeltas, adjust] to notStarted
+// recurses towards outputs
+func (s *Segment) inputsChanged(result chan resultWrapper, aux []interface{}) {
+	s.progMux.Lock()
+	s.prog[evaluate] = notStarted
+	s.prog[deltas] = notStarted
+	s.prog[inputDeltas] = notStarted
+	s.prog[adjust] = notStarted
+	s.progMux.Unlock()
+
+	results := make([]chan error, len(s.outputs))
+	for i, out := range s.outputs {
+		results[i] = make(chan error)
+		go func() { out.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
+	}
+	for i, ch := range results {
+		if err := <-ch; err != nil {
+			err = errors.Wrapf(err, "Failed to notify of inputs changed in segment %s while recursing to output segment %s\n", s.Name, s.outputs[i].Name)
+			result <- resultWrapper{origin: inputsChanged, res: err}
+			return
+		}
+	}
+}
+
+// evaluate does nothing with aux
+// recurses before running towards inputs
+// func (s *Segment) evaluate(result chan resultWrapper, aux []interface{})
+
+// deltas asserts that aux[0] is type []float64
+// passes certain values inputDeltas through aux, with aux put at the end
+// calls inputDeltas on outputs before running
+func (s *Segment) deltas(result chan resultWrapper, aux []interface{}) {
+	s.progMux.Lock()
+	if s.prog[evaluate] != done {
+		s.progMux.Unlock()
+		res := make(chan error)
+		s.comLine <- commandWrapper{com: evaluate, res: res}
+		if err := <-res; err != nil {
+			err = errors.Wrapf(err, "Coudln't get deltas of segment %s, evaluating failed\n", s.Name)
+			result <- resultWrapper{origin: deltas, res: err}
+			return
+		}
+	} else {
+		s.progMux.Unlock()
+	}
+
+	var targetOutputs []float64
+	var ok bool
+	if len(aux) == 0 {
+		err := errors.Errorf("Can't get deltas for segment %s, len(aux) == 0", s.Name)
+		result <- resultWrapper{origin: deltas, res: err}
+		return
+	} else if targetOutputs, ok = aux[0].([]float64); !ok {
+		err := errors.Errorf("Couldn't get deltas of segment %s, aux[0] should be type %T (was type %T)", s.Name, targetOutputs, aux[0])
+		result <- resultWrapper{origin: deltas, res: err}
+		return
+	}
+
+	results := make([]chan error, len(s.outputs))
+	var ds [][]float64
+	if s.isOutput {
+		ds = make([][]float64, len(s.outputs)+1)
+	} else {
+		ds = make([][]float64, len(s.outputs))
+	}
+
+	for i, out := range s.outputs {
+		results[i] = make(chan error)
+		ds[i] = make([]float64, len(s.Values))
+		go func(){out.comLine <- commandWrapper{inputDeltas, results[i], []interface{}{i, ds[i], targetOutputs}}}()
+	}
+	for i, ch := range results {
+		if err := <-ch; err != nil {
+			err = errors.Wrapf(err, "Couldn't get deltas of segment %s, getting input deltas of output segment %s failed.\n", s.Name, s.outputs[i].Name)
+			result <- resultWrapper{origin: deltas, res: err}
+			return
 		}
 	}
 
 	if s.isOutput {
-		// figure out which outputs are the values that it should be looking for
-		offset := 0
-		for _, o := range net.outSegments {
-			if o != s {
-				offset += len(o.values)
-			} else {
-				break
-			}
-		}
-
-		if offset+len(s.deltas) > len(net.outputs) {
-			return errors.Errorf("Couldn't find segment in the network's outputs : offset + len(s.values) >= len(net.outputs) (%d + %d >= %d)", offset, len(s.values), len(net.outputs))
-		}
-
-		// add to all of the deltas : current value - target value
-		for i := range s.deltas {
-			//@CONSTANT : assumes that it is optimizing for the squared error function
-			//@CHANGE   : allow for other error functions
-			s.deltas[i] += s.values[i] - targetOutputs[offset+i]
-		}
-	}
-
-	s.calc = delta
-	return nil
-}
-
-// outputs to deltas
-func (net *Network) GetInputDeltas(s *Segment, in *Segment, targetOutputs, deltas []float64, result chan error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
-	err := net.CalcDeltas(s, targetOutputs)
-	if err != nil {
-		result <- errors.Wrap(err, "Couldn't calculate own deltas\n")
-		return
-	}
-
-	ind := 0
-	for i := range s.inputs {
-		if s.inputs[i] == in {
-			ind = i
-			goto Found
-		}
-	}
-	result <- errors.New("Couldn't find given input in inputs of segment")
-	return
-
-Found:
-	err = s.inputDeltas(ind, deltas)
-	result <- err
-	return
-}
-
-func (net *Network) GenerateDeltas(targetOutputs []float64) error {
-	results := make([]chan error, len(net.outSegments))
-	for i, o := range net.outSegments {
-		results[i] = make(chan error)
-		go o.Calculate(results[i])
-	}
-	for i, ch := range results {
-		err := <-ch
-		if err != nil {
-			return errors.Wrapf(err, "couldn't calculate net output %d - \"%s\"\n", i, net.outSegments[i].name)
-		}
-	}
-
-	for i, in := range net.inSegments {
-		err := net.CalcDeltas(in, targetOutputs)
-		if err != nil {
-			return errors.Wrapf(err, "error from input %d\n", i)
-		}
-	}
-
-	return nil
-}
-
-func (s *Segment) Adjust(learningRate float64, recurseDown bool, result chan error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
-	if s.calc < delta {
-		result <- errors.New("can't adjust because deltas haven't been calculated yet")
-		return
-	}
-
-	if s.calc < weightsChanged {
-		err := s.adjust(learningRate)
-		if err != nil {
-			result <- err
+		if s.outValStart+len(s.Values) > len(targetOutputs) {
+			err := errors.Errorf("Couldn't get deltas for segment %s, either segment outValStart was misinformed or provided target outputs have inadequate length", s.Name)
+			result <- resultWrapper{origin: deltas, res: err}
 			return
 		}
-	}
 
-	if recurseDown {
-		results := make([]chan error, len(s.inputs))
-		for i, in := range s.inputs {
-			results[i] = make(chan error)
-			go in.Adjust(learningRate, recurseDown, results[i])
-		}
-
-		for i, ch := range results {
-			err := <-ch
-			if err != nil {
-				result <- errors.Wrapf(err, "tried to adjust input %d with downward recursion (name: %s)\n", i, s.inputs[i].name)
-				return
-			}
+		ds[len(s.outputs)] = make([]float64, len(s.Values))
+		for i := range s.Values {
+			// assumes it is optimzing for the squared error function
+			ds[len(s.outputs)][i] = s.Values[i] - targetOutputs[s.outValStart+i]
 		}
 	}
 
-	result <- nil
+	// sum all of the slices in ds and set deltas to that
+	for i := range s.Values {
+		var sum float64
+		for _, d := range ds {
+			sum += d[i]
+		}
+		s.Deltas[i] = sum
+	}
+
+	result <- resultWrapper{origin: deltas}
 	return
 }
+
+// inputDeltas asserts that aux[0] is type *Segment and aux[1] is type []float64
+// aux[0] should be the target segment whose deltas (from this segment)
+// aux[1] should be the slice of float that deltas are being written to (to eventually be summed)
+// calls deltas() on itself before running
+// func (s *Segment) inputDeltas(result chan resultWrapper, aux []interface{})
+
+// adjust asserts that aux[0] is type float64
+// if deltas hasn't run yet, it passes aux[1:] to deltas
+// recurses towards inputs
+// func (s *Segment) adjust(result chan resultWrapper, aux []interface{})
