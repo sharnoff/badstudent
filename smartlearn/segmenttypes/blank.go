@@ -29,7 +29,10 @@ func (t blank) SetValuesAndWeights(s *Segment) error {
 
 // assumes SetValuesAndWeights() was already called
 func (t blank) EvaluateFunc(s *Segment) (func() error, error) {
-	return func() error { return nil }, nil
+	return func() error {
+		copy(s.Values, s.InVals)
+		return nil
+	}, nil
 }
 
 // assumes SetValuesAndWeights() was already called
