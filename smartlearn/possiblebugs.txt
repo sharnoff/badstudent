@@ -1,0 +1,12 @@
+(*Network).SetOutputs() doesn't get the rest of the results from segment result channels if it encounters an error in one of them, as well as:
+	(*Segment).checkOutputs()
+	(*Segment).finishAllocating()
+	(*Segment).setMethods()
+	(*Segment).inputsChanged()
+	(*Segment).evaluate()
+	(*Segment).deltas()
+	(*Segment).adjust()
+
+	(*Network).setInputs()
+	(*Network).GetOutputs()
+	(*Network).Correct()
