@@ -6,6 +6,8 @@ import (
 	"math/rand"
 )
 
+// @OPTIMIZE : anything can be made much faster by either multi-threading or porting to CUDA
+
 // neurons implements smartlearn.SegmentType
 type neurons int8
 
@@ -79,5 +81,16 @@ func (t neurons) InputDeltasFunc(s *Segment) (func(int, []float64) error, error)
 	}, nil
 }
 
-// @IN_PROGRESS
-func (t neurons) AdjustFunc(s *Segment) (func(float64) error, error) {}
+func (t neurons) AdjustFunc(s *Segment) (func(float64) error, error) {
+	return func(learningRate float64) error {
+
+		for v := range s.Deltas {
+			for i := range s.InVals {
+				s.Weights[v * len(s.InVals) + i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
+			}
+		}
+
+		return nil
+
+	}, nil
+}
