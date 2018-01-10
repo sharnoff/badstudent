@@ -17,8 +17,8 @@ type SegmentType interface {
 	AdjustFunc(*Segment) (func(float64) error, error)
 }
 
-// useful signatures to copy and paste:
-// func (t type) SetValuesAndWeights(s *Segment) error {}
-// func (t type) EvaluateFunc(s *Segment) (func() error, error) {}
-// func (t type) InputDeltasFunc(s *Segment) (func(int, []float64) error, error) {}
-// func (t type) AdjustFunc(s *Segment) (func(float64) error, error) {}
+// useful function signatures to copy and paste:
+// func (t type) SetValuesAndWeights(s *smartlearn.Segment) error {}
+// func (t type) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {}
+// func (t type) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error, error) {}
+// func (t type) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) {}

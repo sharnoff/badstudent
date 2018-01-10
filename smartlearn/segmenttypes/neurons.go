@@ -17,7 +17,7 @@ func Neurons() neurons {
 
 // sets len(Values) to Dims[0]
 // sets len(Weights) to len(InVals) * len(Values)
-func (t neurons) SetValuesAndWeights(s *Segment) error {
+func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 	if len(s.InVals) == 0 {
 		return errors.Errorf("Couldn't SetValuesAndWeights() for segment %s, segment must have inputs (len(s.InVals) == 0)", s.Name)
 	} else if len(s.Dims) == 0 {
@@ -36,8 +36,9 @@ func (t neurons) SetValuesAndWeights(s *Segment) error {
 }
 
 // weights are arranged so that weights[n] is likely
-// influencing the same value as weights[n+1]
-func (t neurons) EvaluateFunc(s *Segment) (func() error, error) {
+// influencing the same value as weights[n+1],
+// and taking input from inVals[n%len(inVals)]
+func (t neurons) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 	return func() error {
 		i := 0
 		for v := range s.Values {
@@ -52,7 +53,7 @@ func (t neurons) EvaluateFunc(s *Segment) (func() error, error) {
 	}, nil
 }
 
-func (t neurons) InputDeltasFunc(s *Segment) (func(int, []float64) error, error) {
+func (t neurons) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error, error) {
 	return func(input int, d []float64) error {
 		if input >= len(s.NumVpI) {
 			return errors.Errorf("Can't get input deltas of segment %s, input >= len(s.NumVpI) (%d >= %d)", s.Name, input, len(s.NumVpI))
@@ -68,7 +69,6 @@ func (t neurons) InputDeltasFunc(s *Segment) (func(int, []float64) error, error)
 			start += s.NumVpI[i]
 		}
 
-		// @OPTIMIZE : this could be a good place to make some improvements by multi-threading
 		for di := range d {
 			var sum float64
 			for i := range s.Deltas {
@@ -81,7 +81,7 @@ func (t neurons) InputDeltasFunc(s *Segment) (func(int, []float64) error, error)
 	}, nil
 }
 
-func (t neurons) AdjustFunc(s *Segment) (func(float64) error, error) {
+func (t neurons) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) {
 	return func(learningRate float64) error {
 
 		for v := range s.Deltas {

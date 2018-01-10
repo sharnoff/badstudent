@@ -14,7 +14,7 @@ func Blank() blank {
 
 // sets len(weights) to 0
 // sets len(Values) to s.Dims[0]
-func (t blank) SetValuesAndWeights(s *Segment) error {
+func (t blank) SetValuesAndWeights(s *smartlearn.Segment) error {
 	if len(s.InVals) != 0 {
 		return errors.Errorf("Can't SetValuesAndWeights() for segment %s, SegmentType blank should not have inputs (len(s.InVals) == %d)", s.Name, len(s.InVals))
 	} else if len(s.Dims) == 0 {
@@ -28,7 +28,7 @@ func (t blank) SetValuesAndWeights(s *Segment) error {
 }
 
 // assumes SetValuesAndWeights() was already called
-func (t blank) EvaluateFunc(s *Segment) (func() error, error) {
+func (t blank) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 	return func() error {
 		copy(s.Values, s.InVals)
 		return nil
@@ -36,11 +36,11 @@ func (t blank) EvaluateFunc(s *Segment) (func() error, error) {
 }
 
 // assumes SetValuesAndWeights() was already called
-func (t blank) InputDeltasFunc(s *Segment) (func(int, []float64) error, error) {
+func (t blank) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error, error) {
 	return func(int, []float64) error { return nil }, nil
 }
 
 // assumes SetValuesAndWeights() was already called
-func (t blank) AdjustFunc(s *Segment) (func(float64) error, error) {
+func (t blank) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) {
 	return func(float64) error { return nil }, nil
 }
