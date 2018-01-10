@@ -33,26 +33,26 @@ const (
 
 func (c command) String() string {
 	switch c {
-		case checkOutputs:
-			return "checkOutputs"		
-		case allocate:
-			return "allocate"
-		case finishAllocating:
-			return "finishAllocating"
-		case setMethods:
-			return "setMethods"
-		case inputsChanged:
-			return "inputsChanged"
-		case evaluate:
-			return "evaluate"
-		case deltas:
-			return "deltas"
-		case inputDeltas:
-			return "inputDeltas"
-		case adjust:
-			return "adjust"
-		default:
-			return ""
+	case checkOutputs:
+		return "checkOutputs"
+	case allocate:
+		return "allocate"
+	case finishAllocating:
+		return "finishAllocating"
+	case setMethods:
+		return "setMethods"
+	case inputsChanged:
+		return "inputsChanged"
+	case evaluate:
+		return "evaluate"
+	case deltas:
+		return "deltas"
+	case inputDeltas:
+		return "inputDeltas"
+	case adjust:
+		return "adjust"
+	default:
+		return ""
 	}
 }
 

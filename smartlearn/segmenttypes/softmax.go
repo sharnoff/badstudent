@@ -1,8 +1,8 @@
 package segmenttypes
 
 import (
-	"github.com/sharnoff/smartlearning/smartlearn"
 	"github.com/pkg/errors"
+	"github.com/sharnoff/smartlearning/smartlearn"
 	"math"
 )
 
@@ -42,7 +42,7 @@ func (t softmax) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 	}, nil
 }
 
-func (t type) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error, error) {
+func (t softmax) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error, error) {
 	return func(input int, d []float64) error {
 		if input >= len(s.NumVpI) {
 			return errors.Errorf("Can't get input deltas of segment %s, input >= len(s.NumVpI) (%d >= %d)", s.Name, input, len(s.NumVpI))
@@ -66,7 +66,7 @@ func (t type) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) error
 	}, nil
 }
 
-func (t type) AdjustFunc(s *smarlearn.Segment) (func(float64) error, error) {
+func (t softmax) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) {
 	return func(learningRate float64) error {
 		return nil
 	}, nil

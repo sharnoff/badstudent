@@ -1,8 +1,8 @@
 package segmenttypes
 
 import (
-	"github.com/sharnoff/smartlearning/smartlearn"
 	"github.com/pkg/errors"
+	"github.com/sharnoff/smartlearning/smartlearn"
 	"math/rand"
 )
 
@@ -27,9 +27,9 @@ func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 	}
 
 	s.Values = make([]float64, s.Dims[0])
-	s.Weights = make([]float64, s.Dims[0] * len(s.InVals))
+	s.Weights = make([]float64, s.Dims[0]*len(s.InVals))
 	for i := range s.Weights {
-		s.Weights[i] = 1 / float64(len(s.InVals)) * (2 * rand.Float64() - 1)
+		s.Weights[i] = 1 / float64(len(s.InVals)) * (2*rand.Float64() - 1)
 	}
 
 	return nil
@@ -72,7 +72,7 @@ func (t neurons) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) er
 		for di := range d {
 			var sum float64
 			for i := range s.Deltas {
-				sum += s.Weights[len(s.InVals) * i + start + di] * s.Deltas[i]
+				sum += s.Weights[len(s.InVals)*i+start+di] * s.Deltas[i]
 			}
 			d[di] = sum
 		}
@@ -86,7 +86,7 @@ func (t neurons) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) 
 
 		for v := range s.Deltas {
 			for i := range s.InVals {
-				s.Weights[v * len(s.InVals) + i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
+				s.Weights[v*len(s.InVals)+i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
 			}
 		}
 

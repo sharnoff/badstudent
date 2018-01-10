@@ -2,8 +2,8 @@ package smartlearn
 
 import (
 	"github.com/pkg/errors"
-	"sort"
 	"math"
+	"sort"
 )
 
 // if dupe is true, GetOutputs will return a copy of the network
@@ -20,7 +20,7 @@ func (net *Network) GetOutputs(inputs []float64, dupe bool) ([]float64, error) {
 		results := make([]chan error, len(net.outSegments))
 		for i, out := range net.outSegments {
 			results[i] = make(chan error)
-			go func(){ out.comLine <- commandWrapper{com: evaluate, res: results[i]} }()
+			go func() { out.comLine <- commandWrapper{com: evaluate, res: results[i]} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -53,7 +53,7 @@ func (net *Network) setInputs(inputs []float64) error {
 		results := make([]chan error, len(net.inSegments))
 		for i, in := range net.inSegments {
 			results[i] = make(chan error)
-			go func(){ in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
+			go func() { in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -77,7 +77,7 @@ func (net *Network) Correct(inputs, targetOutputs []float64, learningRate float6
 		results := make([]chan error, len(net.inSegments))
 		for i, in := range net.inSegments {
 			results[i] = make(chan error)
-			go func(){ in.comLine <- commandWrapper{deltas, results[i], []interface{}{targetOutputs}} }()
+			go func() { in.comLine <- commandWrapper{deltas, results[i], []interface{}{targetOutputs}} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -91,7 +91,7 @@ func (net *Network) Correct(inputs, targetOutputs []float64, learningRate float6
 		results := make([]chan error, len(net.outSegments))
 		for i, out := range net.outSegments {
 			results[i] = make(chan error)
-			go func(){ out.comLine <- commandWrapper{adjust, results[i], []interface{}{learningRate, targetOutputs}} }()
+			go func() { out.comLine <- commandWrapper{adjust, results[i], []interface{}{learningRate, targetOutputs}} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -105,7 +105,7 @@ func (net *Network) Correct(inputs, targetOutputs []float64, learningRate float6
 		results := make([]chan error, len(net.inSegments))
 		for i, in := range net.inSegments {
 			results[i] = make(chan error)
-			go func(){ in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
+			go func() { in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -156,7 +156,7 @@ func SquaredError(a, b []float64) (float64, error) {
 
 	var sum float64
 	for i := range a {
-		sum += math.Pow(a[i] - b[i], 2)
+		sum += math.Pow(a[i]-b[i], 2)
 	}
 
 	return sum, nil

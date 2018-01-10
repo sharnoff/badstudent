@@ -1,8 +1,8 @@
 package segmenttypes
 
 import (
-	"github.com/sharnoff/smartlearning/smartlearn"
 	"github.com/pkg/errors"
+	"github.com/sharnoff/smartlearning/smartlearn"
 )
 
 // blank implements smartlearn.SegmentType

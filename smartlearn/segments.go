@@ -23,14 +23,14 @@ type Segment struct {
 	isOutput    bool
 	outValStart int // the index in net.outputs that the values of the segment start at
 
-	inputsIdentical bool       // true if InVals and inputs point to the same memory space as inputs[].Values
+	inputsIdentical bool        // true if InVals and inputs point to the same memory space as inputs[].Values
 	memBlock        *[]*Segment // the set of other segments (and itself) that this is located with
 	valueSet        []float64
 
-	prog    map[command]progress
+	prog       map[command]progress
 	deltasProg []progress
-	progMux sync.Mutex
-	comLine chan commandWrapper
+	progMux    sync.Mutex
+	comLine    chan commandWrapper
 
 	// these methods are what are set by 'setMethods' and run more than just the SemgentType
 	// portion of the methods
@@ -73,7 +73,7 @@ func (s *Segment) run(init chan error) {
 	s.prog = make(map[command]progress)
 	s.progMux.Unlock()
 	// progMux doesn't apply to deltasProg
-	s.deltasProg = make(map[*Segment]progress)
+	s.deltasProg = make([]progress, len(s.inputs))
 
 	resLine := make(chan resultWrapper)
 	funcs := map[command]func(*Segment, chan resultWrapper, []interface{}){
@@ -92,7 +92,7 @@ func (s *Segment) run(init chan error) {
 	returnChs := make(map[command][]chan error)
 
 	// this is used for the one exception to this system:
-	// inputDeltas needs to be individually done each time 
+	// inputDeltas needs to be individually done each time
 	// deltasWaiting follows LiFo
 	deltasWaiting := make([]commandWrapper, 0, len(s.inputs))
 
@@ -154,17 +154,17 @@ func (s *Segment) run(init chan error) {
 				err = errors.Wrapf(r.res, "Non-critical error from s.%s() for segment %s\n", r.origin.String(), s.Name)
 			}
 		}
- 
+
 		if r.origin == inputDeltas {
 			s.progMux.Lock()
 			s.prog[inputDeltas] = notStarted
 			s.progMux.Unlock()
 
-			go func() { returnChs[r.origin[0]] <- err }
+			go func() { returnChs[r.origin][0] <- err }()
 
 			if len(deltasWaiting) != 0 {
-				go func(){ s.comLine <- deltasWaiting[len(deltasWaiting) - 1] }()
-				deltasWaiting = deltasWaiting[:len(deltasWaiting) - 1] // slice one element off the end
+				go func() { s.comLine <- deltasWaiting[len(deltasWaiting)-1] }()
+				deltasWaiting = deltasWaiting[:len(deltasWaiting)-1] // slice one element off the end
 			}
 		} else {
 			s.progMux.Lock()
@@ -427,7 +427,7 @@ func (s *Segment) finishAllocating(result chan resultWrapper, aux []interface{})
 
 	// find how many other segments and values there are before this segment / its values
 	segBefore, vsBefore := -1, 0
-	for i, seg := range (*s.memBlock) { // it's okay to run this multiple times because this is during setup
+	for i, seg := range *s.memBlock { // it's okay to run this multiple times because this is during setup
 		if seg == s {
 			segBefore = i
 			break
@@ -461,7 +461,7 @@ func (s *Segment) finishAllocating(result chan resultWrapper, aux []interface{})
 		}
 
 		s.InVals = valueSets[s.inputs[0].memBlock][vsBefore : vsBefore+len(s.InVals)]
-		s.inputs = (*s.inputs[0].memBlock)[segBefore : segBefore + len(s.inputs)]
+		s.inputs = (*s.inputs[0].memBlock)[segBefore : segBefore+len(s.inputs)]
 	}
 
 	result <- resultWrapper{origin: finishAllocating}
@@ -668,7 +668,7 @@ func (s *Segment) setMethods(result chan resultWrapper, aux []interface{}) {
 		results := make([]chan error, len(s.inputs))
 		for i, in := range s.inputs {
 			results[i] = make(chan error)
-			go func(){ in.comLine <- commandWrapper{adjust, results[i], aux} }()
+			go func() { in.comLine <- commandWrapper{adjust, results[i], aux} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -772,7 +772,7 @@ func (s *Segment) deltas(result chan resultWrapper, aux []interface{}) {
 	for i, out := range s.outputs {
 		results[i] = make(chan error)
 		ds[i] = make([]float64, len(s.Values))
-		go func(){out.comLine <- commandWrapper{inputDeltas, results[i], []interface{}{i, ds[i], targetOutputs}}}()
+		go func() { out.comLine <- commandWrapper{inputDeltas, results[i], []interface{}{i, ds[i], targetOutputs}} }()
 	}
 	for i, ch := range results {
 		if err := <-ch; err != nil {

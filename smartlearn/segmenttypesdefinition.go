@@ -10,7 +10,7 @@ type SegmentType interface {
 	//		- NumVpI
 	//		- InputDims
 	//		- InVals
-	SetValuesAndWeights(*Segment) (error)
+	SetValuesAndWeights(*Segment) error
 
 	EvaluateFunc(*Segment) (func() error, error)
 	InputDeltasFunc(*Segment) (func(int, []float64) error, error)

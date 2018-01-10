@@ -20,7 +20,7 @@ type Network struct {
 // Add creates a new Segment and adds it to an existing network.
 // dims is the dimensions of the Segment, for use by whichever SegmentType it is passed
 // typ is the SegmentType for the Segment
-// inputs 
+// inputs
 func (net *Network) Add(name string, typ SegmentType, dims []int, inputs ...*Segment) (*Segment, error) {
 	if net.outSegments != nil {
 		return nil, errors.Errorf("Can't add segment \"%s\" to network, network outputs have already been set (net.outSegments != nil)", name)
@@ -110,7 +110,7 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 	// allocate the shared memory portion of the network
 	{
 		// initialize memBlocks with two elements so that it can hold the network inputs and outputs
-		memBlocks :=  make([]*[]*Segment, 2)
+		memBlocks := make([]*[]*Segment, 2)
 
 		// set the first two memBlocks as network inputs : [0], and outputs : [1]
 		// Note: This is technically not optimal, as there may be some cases where it would be necessary
@@ -131,12 +131,12 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 				}
 			}
 		}
-		
+
 		// tell the rest of the segments to allocate, starting from the outputs
 		results := make([]chan error, len(net.outSegments))
 		for i, out := range net.outSegments {
 			results[i] = make(chan error)
-			go func() { out.comLine <- commandWrapper{com: allocate, res: results[i], aux: []interface{}{&memBlocks} } }()
+			go func() { out.comLine <- commandWrapper{com: allocate, res: results[i], aux: []interface{}{&memBlocks}} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -183,8 +183,8 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 				return errors.Errorf("Couldn't finalize allocating network inputs/outputs. Failed to find segment in its memBlock. io = %d", io)
 			}
 
-			*netSl = (*memBlock)[segBefore:segBefore + len(*netSl)]
-			*netVs = valueSets[memBlock][vsBefore:vsBefore + len(*netVs)]
+			*netSl = (*memBlock)[segBefore : segBefore+len(*netSl)]
+			*netVs = valueSets[memBlock][vsBefore : vsBefore+len(*netVs)]
 		}
 	}
 
