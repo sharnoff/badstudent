@@ -133,8 +133,11 @@ func (a arrWithIndexes) Swap(i, j int) {
 	a.indexes[i], a.indexes[j] = a.indexes[j], a.indexes[i]
 }
 
+// copies the given slice
 func sortValues(vs []float64) []int {
-	arr := arrWithIndexes{vs, make([]int, len(vs))}
+	cop := make([]float64, len(vs))
+	copy(cop, vs)
+	arr := arrWithIndexes{cop, make([]int, len(cop))}
 	for i := range arr.indexes {
 		arr.indexes[i] = i
 	}
@@ -174,10 +177,8 @@ func (net *Network) Train(data []*Datum, learningRate float64) (float64, float64
 			return 0, 0, errors.Wrapf(err, "Couldn't train network, correction failed on datum %d", i)
 		}
 
-		// @CHANGE : should allow for multiple correct answers
-		copyOfCorrectOutputs := make([]float64, len(d.Outputs))
-		copy(copyOfCorrectOutputs, d.Outputs)
-		testRankings := sortValues(copyOfCorrectOutputs)
+		// @CHANGE : should allow for multiple correct answer
+		testRankings := sortValues(d.Outputs)
 		rankings := sortValues(outs)
 		if rankings[0] == testRankings[0] {
 			percentCorrect += 100.0 / float64(len(data))
@@ -209,9 +210,7 @@ func (net *Network) Test(data []*Datum) (float64, float64, error) {
 		}
 
 		// @CHANGE : should allow for multiple correct answers
-		copyOfCorrectOutputs := make([]float64, len(d.Outputs))
-		copy(copyOfCorrectOutputs, d.Outputs)
-		testRankings := sortValues(copyOfCorrectOutputs)
+		testRankings := sortValues(d.Outputs)
 		rankings := sortValues(outs)
 		if rankings[0] == testRankings[0] {
 			percentCorrect += 100.0 / float64(len(data))
