@@ -52,7 +52,7 @@ func (net *Network) Add(name string, typ SegmentType, dims []int, inputs ...*Seg
 			s.NumVpI[i] = len(in.Values)
 			totalNumInputs += len(in.Values)
 		}
-		s.InVals = make([]float64, 0, totalNumInputs) // capacity used as a value for (*Network).SetOutputs()
+		s.InVals = make([]float64, totalNumInputs)
 	}
 
 	if err := typ.SetValuesAndWeights(s); err != nil {
@@ -96,7 +96,8 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 		}
 
 		results := make([]chan error, len(net.inSegments))
-		for i, in := range net.inSegments {
+		for i_, in_ := range net.inSegments {
+			i, in := i_, in_
 			results[i] = make(chan error)
 			go func() { in.comLine <- commandWrapper{com: checkOutputs, res: results[i]} }()
 		}
@@ -134,9 +135,10 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 
 		// tell the rest of the segments to allocate, starting from the outputs
 		results := make([]chan error, len(net.outSegments))
-		for i, out := range net.outSegments {
+		for i_, out_ := range net.outSegments {
+			i, out := i_, out_
 			results[i] = make(chan error)
-			go func() { out.comLine <- commandWrapper{com: allocate, res: results[i], aux: []interface{}{&memBlocks}} }()
+			go func() { out.comLine <- commandWrapper{allocate, results[i], []interface{}{&memBlocks}} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
@@ -148,7 +150,8 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 		var vsMux sync.Mutex
 
 		// now that everything's allocated, tell all segments to finish allocating, starting from the outputs
-		for i, in := range net.outSegments {
+		for i_, in_ := range net.outSegments {
+			i, in := i_, in_
 			results[i] = make(chan error)
 			go func() { in.comLine <- commandWrapper{finishAllocating, results[i], []interface{}{valueSets, vsMux}} }()
 		}
@@ -159,6 +162,7 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 		}
 
 		// set network inputs and outputs to be identical to the memBlocks
+		// uses memBlocks[:2] because the first two are guaranteed to contain the inputs, then the outputs
 		for io, memBlock := range memBlocks[:2] {
 			var netSl *[]*Segment
 			var netVs *[]float64
@@ -168,6 +172,11 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 			} else { // 1 is outputs
 				netSl = &net.outSegments
 				netVs = &net.outputs
+			}
+
+			numVs := 0
+			for i := range *netSl {
+				numVs += len((*netSl)[i].Values)
 			}
 
 			segBefore, vsBefore := -1, 0
@@ -182,22 +191,37 @@ func (net *Network) SetOutputs(outputs ...*Segment) error {
 			if segBefore == -1 {
 				return errors.Errorf("Couldn't finalize allocating network inputs/outputs. Failed to find segment in its memBlock. io = %d", io)
 			}
-
 			*netSl = (*memBlock)[segBefore : segBefore+len(*netSl)]
-			*netVs = valueSets[memBlock][vsBefore : vsBefore+len(*netVs)]
+			*netVs = valueSets[memBlock][vsBefore : vsBefore+numVs]
 		}
 	}
 
 	// set all of the methods for each segment, now that the memory is all in the right place
 	{
 		results := make([]chan error, len(net.inSegments))
-		for i, in := range net.inSegments {
+		for i_, in_ := range net.inSegments {
+			i, in := i_, in_
 			results[i] = make(chan error)
 			go func() { in.comLine <- commandWrapper{com: setMethods, res: results[i]} }()
 		}
 		for i, ch := range results {
 			if err := <-ch; err != nil {
 				return errors.Wrapf(err, "Couldn't set network outputs - setting segment methods failed with input segment %s\n", net.inSegments[i].Name)
+			}
+		}
+	}
+	
+	// send to all segments inputsChanged, indicating that the network has finished setting up
+	{
+		results := make([]chan error, len(net.inSegments))
+		for i_, in_ := range net.inSegments {
+			i, in := i_, in_
+			results[i] = make(chan error)
+			go func() { in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
+		}
+		for i, ch := range results {
+			if err := <-ch; err != nil {
+				return errors.Wrapf(err, "Couldn't set network outputs - sending 'inputsChanged' failed with input segment %s\n", net.inSegments[i].Name)
 			}
 		}
 	}
