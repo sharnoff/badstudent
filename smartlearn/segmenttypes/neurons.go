@@ -15,8 +15,10 @@ func Neurons() neurons {
 	return neurons(0)
 }
 
+const bias_value float64 = 1.0
+
 // sets len(Values) to Dims[0]
-// sets len(Weights) to len(InVals) * len(Values)
+// sets len(Weights) to len(InVals) * (len(Values) + 1) (for bias)
 func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 	if len(s.InVals) == 0 {
 		return errors.Errorf("Couldn't SetValuesAndWeights() for segment %s, segment must have inputs (len(s.InVals) == 0)", s.Name)
@@ -27,9 +29,9 @@ func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 	}
 
 	s.Values = make([]float64, s.Dims[0])
-	s.Weights = make([]float64, s.Dims[0]*len(s.InVals))
+	s.Weights = make([]float64, s.Dims[0] * (len(s.InVals)) + 1)
 	for i := range s.Weights {
-		s.Weights[i] = 1 / float64(len(s.InVals)) * (2*rand.Float64() - 1)
+		s.Weights[i] = 1 / float64(len(s.InVals) + 1) * (2*rand.Float64() - 1)
 	}
 
 	return nil
@@ -38,6 +40,7 @@ func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 // weights are arranged so that weights[n] is likely
 // influencing the same value as weights[n+1],
 // and taking input from inVals[n%len(inVals)]
+// biases are appended to the end of the section of weights that a value takes input from
 func (t neurons) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 	return func() error {
 		i := 0
@@ -47,6 +50,9 @@ func (t neurons) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 				s.Values[v] += inv * s.Weights[i]
 				i++
 			}
+
+			s.Values[v] += bias_value * s.Weights[i]
+			i++
 		}
 
 		return nil
@@ -72,7 +78,7 @@ func (t neurons) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) er
 		for di := range d {
 			var sum float64
 			for i := range s.Deltas {
-				sum += s.Weights[len(s.InVals)*i+start+di] * s.Deltas[i]
+				sum += s.Weights[(len(s.InVals) + 1) * i + start + di] * s.Deltas[i]
 			}
 			d[di] = sum
 		}
@@ -86,8 +92,11 @@ func (t neurons) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) 
 
 		for v := range s.Deltas {
 			for i := range s.InVals {
-				s.Weights[v*len(s.InVals)+i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
+				s.Weights[v * (len(s.InVals) + 1) + i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
 			}
+
+			// biases
+			s.Weights[v * (len(s.InVals) + 1) + len(s.InVals)] += -1 * learningRate * bias_value * s.Deltas[v]
 		}
 
 		return nil
