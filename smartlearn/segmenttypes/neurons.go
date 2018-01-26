@@ -4,6 +4,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sharnoff/smartlearning/smartlearn"
 	"math/rand"
+	"math"
+	// "fmt"
 )
 
 // @OPTIMIZE : anything can be made much faster by either multi-threading or porting to CUDA
@@ -29,7 +31,7 @@ func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 	}
 
 	s.Values = make([]float64, s.Dims[0])
-	s.Weights = make([]float64, s.Dims[0] * (len(s.InVals)) + 1)
+	s.Weights = make([]float64, s.Dims[0] * (len(s.InVals) + 1))
 	for i := range s.Weights {
 		s.Weights[i] = 1 / float64(len(s.InVals) + 1) * (2*rand.Float64() - 1)
 	}
@@ -43,16 +45,19 @@ func (t neurons) SetValuesAndWeights(s *smartlearn.Segment) error {
 // biases are appended to the end of the section of weights that a value takes input from
 func (t neurons) EvaluateFunc(s *smartlearn.Segment) (func() error, error) {
 	return func() error {
-		i := 0
 		for v := range s.Values {
-			s.Values[v] = 0
-			for _, inv := range s.InVals {
-				s.Values[v] += inv * s.Weights[i]
-				i++
-			}
+			w := s.Weights[v * (len(s.InVals) + 1) : (v + 1) * (len(s.InVals) + 1)]
 
-			s.Values[v] += bias_value * s.Weights[i]
-			i++
+			s.Values[v] = 0
+
+			for i, inv := range s.InVals {
+				s.Values[v] += inv * w[i]
+			}
+			s.Values[v] += bias_value * w[len(w) - 1]
+
+			if math.IsNaN(s.Values[v]) {
+				return errors.Errorf("Couldn't evaluate segment %s, s.Values[%d] results as NaN\n", s.Name, v)
+			}
 		}
 
 		return nil
@@ -78,9 +83,13 @@ func (t neurons) InputDeltasFunc(s *smartlearn.Segment) (func(int, []float64) er
 		for di := range d {
 			var sum float64
 			for i := range s.Deltas {
-				sum += s.Weights[(len(s.InVals) + 1) * i + start + di] * s.Deltas[i]
+				sum += s.Weights[start + i*(len(s.InVals) + 1) + di] * s.Deltas[i]
 			}
 			d[di] = sum
+
+			if math.IsNaN(sum) {
+				return errors.Errorf("Can't get input deltas of semgent %s, d[%d] resulted evaluated to NaN", s.Name, di)
+			}
 		}
 
 		return nil
@@ -91,12 +100,13 @@ func (t neurons) AdjustFunc(s *smartlearn.Segment) (func(float64) error, error) 
 	return func(learningRate float64) error {
 
 		for v := range s.Deltas {
+			w := s.Weights[v * (len(s.InVals) + 1) : (v + 1) * (len(s.InVals) + 1)]
 			for i := range s.InVals {
-				s.Weights[v * (len(s.InVals) + 1) + i] += -1 * learningRate * s.InVals[i] * s.Deltas[v]
+				w[i] -= learningRate * s.InVals[i] * s.Deltas[v]
 			}
 
 			// biases
-			s.Weights[v * (len(s.InVals) + 1) + len(s.InVals)] += -1 * learningRate * bias_value * s.Deltas[v]
+			w[len(w) - 1] -= learningRate * bias_value * s.Deltas[v]
 		}
 
 		return nil

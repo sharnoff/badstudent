@@ -148,6 +148,7 @@ func (s *Segment) run(init chan error) {
 				go func() { c.res <- nil }()
 				break
 			}
+
 			returnChs[c.com] = append(returnChs[c.com], c.res)
 			if s.prog[c.com] == inProgress {
 				s.progMux.Unlock()
@@ -193,6 +194,8 @@ func (s *Segment) run(init chan error) {
 					ch := returnChs[r.origin][i]
 					go func() { ch <- err }()
 				}
+
+				returnChs[r.origin] = nil
 
 				if r.origin.isSetup() && r.origin.isRunning() {
 					pastSetup = true
