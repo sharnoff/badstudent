@@ -2,12 +2,6 @@ package main
 
 import (
 	"github.com/sharnoff/smartlearning/smartlearn"
-	// "github.com/sharnoff/smartlearning/smartlearn/costfunctions"
-	// "github.com/sharnoff/smartlearning/smartlearn/learningratefunctions"
-	// "github.com/sharnoff/smartlearning/smartlearn/optimizers"
-	// "github.com/sharnoff/smartlearning/smartlearn/segmenttypes"
-
-	// "github.com/pkg/errors"
 
 	"fmt"
 )
@@ -22,7 +16,7 @@ func main() {
 
 	// these are the main adjustable variables
 	learningRate := 0.1
-	maxEpochs := 10
+	maxEpochs := 2000
 
 	fmt.Println("Setting up network...")
 	net := new(smartlearn.Network)
@@ -38,6 +32,10 @@ func main() {
 		}
 
 		if err = net.Add("output neurons", 1); err != nil {
+			panic(err.Error())
+		}
+
+		if err = net.SetOutputs(); err != nil {
 			panic(err.Error())
 		}
 	}

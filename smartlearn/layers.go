@@ -17,6 +17,8 @@ type Layer struct {
 	input  *Layer
 	output *Layer
 
+	isOutput bool
+
 	status    status_
 	statusMux sync.Mutex
 }
@@ -25,7 +27,7 @@ type status_ int8
 
 const (
 	// initialized  status_ = iota // 0
-	// checkOuts    status_ = iota // 1
+	checkOuts    status_ = iota // 1
 	changed      status_ = iota // 2
 	evaluated    status_ = iota // 3
 	deltas       status_ = iota // 4
@@ -35,6 +37,25 @@ const (
 
 func (l *Layer) String() string {
 	return "\"" + l.name + "\""
+}
+
+func (l *Layer) checkOutputs() error {
+	l.statusMux.Lock()
+	defer l.statusMux.Unlock()
+	if l.status >= checkOuts {
+		return nil
+	}
+
+	if l.output == nil {
+		if !l.isOutput {
+			return errors.Errorf("Checked outputs; layer %v has no effect on network outputs\n", l)
+		}
+	} else if err := l.output.checkOutputs(); err != nil {
+		return errors.Wrapf(err, "Checking outputs of layer %v from %v failed\n", l.output, l)
+	}
+
+	l.status = checkOuts
+	return nil
 }
 
 func (l *Layer) inputsChanged() {

@@ -33,10 +33,13 @@ func (net *Network) Add(name string, size int) error {
 	l := new(Layer)
 	l.name = name
 	l.status = changed
+	l.isOutput = true
 
 	if net.output != nil {
 		l.input = net.output
 		net.output.output = l
+		
+		l.input.isOutput = false
 	} else {
 		net.input = l
 	}
@@ -45,6 +48,20 @@ func (net *Network) Add(name string, size int) error {
 	l.values = make([]float64, size)
 	l.deltas = make([]float64, size)
 	l.initWeights()
+
+	return nil
+}
+
+func (net *Network) SetOutputs() error {
+	if net.input == nil {
+		return errors.Errorf("Can't set outputs of network, network has no layers (net.input == nil)")
+	} else if net.input == net.output {
+		return errors.Errorf("Can't set outputs of network, input and output are identical (%v)", net.input)
+	}
+
+	if err := net.input.checkOutputs(); err != nil {
+		return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v failed\n", net.input)
+	}
 
 	return nil
 }
