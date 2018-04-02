@@ -1,4 +1,4 @@
-package smartlearn
+package badstudent
 
 import (
 	"github.com/pkg/errors"

@@ -1,4 +1,4 @@
-package smartlearn
+package badstudent
 
 import (
 	"github.com/pkg/errors"
@@ -6,8 +6,11 @@ import (
 )
 
 type Network struct {
-	input *Layer
-	output *Layer
+	inLayers  []*Layer
+	outLayers []*Layer
+
+	inputs  []float64
+	outputs []float64
 }
 
 func (l *Layer) initWeights() {
@@ -30,20 +33,27 @@ func (net *Network) Add(name string, size int) error {
 		return errors.Errorf("Can't add layer to network, layer must have >= 1 neurons (%d)", size)
 	}
 
+	if len(net.inLayers) == 0 {
+		net.inLayers = make([]*Layer, 1)
+	}
+	if len(net.outLayers) == 0 {
+		net.outLayers = make([]*Layer, 1)
+	}
+
 	l := new(Layer)
-	l.name = name
+	l.Name = name
 	l.status = changed
 	l.isOutput = true
 
-	if net.output != nil {
-		l.input = net.output
-		net.output.output = l
+	if net.outLayers[0] != nil {
+		l.input = net.outLayers[0]
+		net.outLayers[0].output = l
 		
 		l.input.isOutput = false
 	} else {
-		net.input = l
+		net.inLayers[0] = l
 	}
-	net.output = l
+	net.outLayers[0] = l
 
 	l.values = make([]float64, size)
 	l.deltas = make([]float64, size)
@@ -53,14 +63,14 @@ func (net *Network) Add(name string, size int) error {
 }
 
 func (net *Network) SetOutputs() error {
-	if net.input == nil {
-		return errors.Errorf("Can't set outputs of network, network has no layers (net.input == nil)")
-	} else if net.input == net.output {
-		return errors.Errorf("Can't set outputs of network, input and output are identical (%v)", net.input)
+	if net.inLayers[0] == nil {
+		return errors.Errorf("Can't set outputs of network, network has no layers (net.inLayers[0] == nil)")
+	} else if net.inLayers[0] == net.outLayers[0] {
+		return errors.Errorf("Can't set outputs of network, input and output are identical (%v)", net.inLayers[0])
 	}
 
-	if err := net.input.checkOutputs(); err != nil {
-		return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v failed\n", net.input)
+	if err := net.inLayers[0].checkOutputs(); err != nil {
+		return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v failed\n", net.inLayers[0])
 	}
 
 	return nil

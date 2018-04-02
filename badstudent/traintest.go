@@ -1,4 +1,4 @@
-package smartlearn
+package badstudent
 
 import (
 	"github.com/pkg/errors"	
@@ -7,17 +7,17 @@ import (
 // returns a copy of the output values of the network, given the inputs
 // returns error if the number of given inputs doesn't match the number of inputs to the network
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
-	if len(inputs) != len(net.input.values) {
-		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.input.values))
+	if len(inputs) != len(net.inLayers[0].values) {
+		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inLayers[0].values))
 	}
 
-	copy(net.input.values, inputs)
-	net.input.inputsChanged()
+	copy(net.inLayers[0].values, inputs)
+	net.inLayers[0].inputsChanged()
 
-	net.output.evaluate()
+	net.outLayers[0].evaluate()
 
-	dupe := make([]float64, len(net.output.values))
-	copy(dupe, net.output.values)
+	dupe := make([]float64, len(net.outLayers[0].values))
+	copy(dupe, net.outLayers[0].values)
 	return dupe, nil
 }
 
@@ -28,13 +28,13 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64) (co
 		return
 	}
 
-	net.output.evaluate()
-	if err = net.input.getDeltas(targets); err != nil {
+	net.outLayers[0].evaluate()
+	if err = net.inLayers[0].getDeltas(targets); err != nil {
 		err = errors.Wrapf(err, "Couldn't correct network, getting deltas failed\n")
 		return
 	}
 
-	if err = net.output.adjust(learningRate); err != nil {
+	if err = net.outLayers[0].adjust(learningRate); err != nil {
 		err = errors.Wrapf(err, "Couldn't correct network (adjusting failed)\n")
 		return
 	}
@@ -54,7 +54,7 @@ type Datum struct {
 }
 
 func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == len(net.input.values) && len(d.Outputs) == len(net.output.values)
+	return len(d.Inputs) == len(net.inLayers[0].values) && len(d.Outputs) == len(net.outLayers[0].values)
 }
 
 type TrainArgs struct {
@@ -166,7 +166,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			*errPtr = errors.Errorf("Couldn't *Network.Train(), received empty struct from fetching data on iteration %d\n", iteration)
 			return
 		} else if !d.fits(net) {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), Datum at iteration %d (epoch %d) had improper dimensions for network (lengths: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - %d\n", iteration, epoch, len(net.input.values), len(d.Inputs), len(net.output.values), len(d.Outputs))
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), Datum at iteration %d (epoch %d) had improper dimensions for network (lengths: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - %d\n", iteration, epoch, len(net.inLayers[0].values), len(d.Inputs), len(net.outLayers[0].values), len(d.Outputs))
 			return
 		}
 
@@ -223,7 +223,7 @@ func (net *Network) Test(data func(chan Datum, *error)) (float64, float64, error
 	var avgErr, percentCorrect float64
 	for d := range dataSrc {
 		if !d.fits(net) {
-			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given Datum had improper dimensions (lenghs: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - d", len(net.input.values), len(d.Inputs), len(net.output.values), len(d.Outputs))
+			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given Datum had improper dimensions (lenghs: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - d", len(net.inLayers[0].values), len(d.Inputs), len(net.outLayers[0].values), len(d.Outputs))
 		}
 
 		if dataSrcErr != nil {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/sharnoff/smartlearning/smartlearn"
+	"github.com/sharnoff/smartlearning/badstudent"
 
 	"fmt"
 )
@@ -15,15 +15,15 @@ func main() {
 	}
 
 	// these are the main adjustable variables
-	learningRate := 0.1
-	maxEpochs := 2000
+	learningRate := 1.0
+	maxEpochs := 750
 
 	fmt.Println("Setting up network...")
-	net := new(smartlearn.Network)
+	net := new(badstudent.Network)
 	{
 		var err error
 
-		if err = net.Add("inputs", 2); err != nil {
+		if err = net.Add("input", 2); err != nil {
 			panic(err.Error())
 		}
 
@@ -34,10 +34,6 @@ func main() {
 		if err = net.Add("output neurons", 1); err != nil {
 			panic(err.Error())
 		}
-
-		if err = net.SetOutputs(); err != nil {
-			panic(err.Error())
-		}
 	}
 	fmt.Println("Done!")
 
@@ -46,12 +42,12 @@ func main() {
 		Epoch, IsTest bool
 	})
 
-	dataSrc, err := smartlearn.TrainCh(dataset)
+	dataSrc, err := badstudent.TrainCh(dataset)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	args := smartlearn.TrainArgs{
+	args := badstudent.TrainArgs{
 		Data:         dataSrc,
 		Results:      res,
 		Err:          &err,
