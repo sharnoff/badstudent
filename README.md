@@ -1,18 +1,19 @@
 # smartlearning
 
-Smartlearning is divided into a few parts:
-* smartlearn - the package of all of the neural network handling functions
-  * segmenttypes - a sub-package containing all of the different types of operations one might wish to have in a neural network
-* cmd - some examples of the system working, using a simple xor-learning network and a network designed to train from the mnist csv dataset
+This is currently in progress -- there will be large API changes in the near future.
+Once the API is stable, documentation will be added outside of the codebase.
 
-Smartlearning was designed to make more complex neural network structures (with separate paths) simpler to work with. It's also helped me in my journey to understand more of deep learning.
+Current features:
+* layers of feed-forward neurons with the logistic function serving as the activation funtion
+* easy supplying of data to train the network
+* real-time output of training status
 
+Features in progress:
+* different types of operations available as layers
+* free-form layer architecture
+* custom cost functions for network output
+* custom optimization functions for existing layers
+* custom functions for variable learning rates
+* saving / loading of networks
 
-Future features:
-* Custom cost/error functions
-* Custom optimization functions for built in segment types
-* Custom functions for variable learning rates (α)
-* Saving/loading of networks
-
-
-More information to come in future updates! If you're curious, shoot me an email!
+Will be testing using cmd/test, which just checks that the network can learn to be an XOR gate

@@ -1,228 +1,317 @@
 package smartlearn
 
 import (
-	"github.com/pkg/errors"
-	"math"
-	"sort"
+	"github.com/pkg/errors"	
 )
 
-// if dupe is true, GetOutputs will return a copy of the network
-// outputs, else it will return the slice of values that the network outputs
-// set
-func (net *Network) GetOutputs(inputs []float64, dupe bool) ([]float64, error) {
-	err := net.setInputs(inputs)
+// returns a copy of the output values of the network, given the inputs
+// returns error if the number of given inputs doesn't match the number of inputs to the network
+func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
+	if len(inputs) != len(net.input.values) {
+		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.input.values))
+	}
+
+	copy(net.input.values, inputs)
+	net.input.inputsChanged()
+
+	net.output.evaluate()
+
+	dupe := make([]float64, len(net.output.values))
+	copy(dupe, net.output.values)
+	return dupe, nil
+}
+
+func (net *Network) Correct(inputs, targets []float64, learningRate float64) (cost float64, outs []float64, err error) {
+	outs, err = net.GetOutputs(inputs)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Couldn't get outputs of network, failed to first set inputs\n")
+		err = errors.Wrapf(err, "Couldn't correct network, getting outputs failed\n")
+		return
 	}
 
-	// evaluate the outputs so that we can get them from the network
-	{
-		results := make([]chan error, len(net.outSegments))
-		for i, out := range net.outSegments {
-			results[i] = make(chan error)
-			go func() { out.comLine <- commandWrapper{com: evaluate, res: results[i]} }()
-		}
-		for i, ch := range results {
-			if err := <-ch; err != nil {
-				return nil, errors.Wrapf(err, "Couldn't get network outputs, output segment %s failed to evaluate\n", net.outSegments[i].Name)
-			}
-		}
+	net.output.evaluate()
+	if err = net.input.getDeltas(targets); err != nil {
+		err = errors.Wrapf(err, "Couldn't correct network, getting deltas failed\n")
+		return
 	}
 
-	// get the network values and return
-	{
-		if dupe {
-			vals := make([]float64, len(net.outputs))
-			copy(vals, net.outputs)
-			return vals, nil
-		} else {
-			return net.outputs, nil
-		}
-	}
-}
-
-func (net *Network) setInputs(inputs []float64) error {
-	// set the network inputs
-	{
-		// doesn't check if they have the same length, because copy will take care of that
-		copy(net.inputs, inputs)
+	if err = net.output.adjust(learningRate); err != nil {
+		err = errors.Wrapf(err, "Couldn't correct network (adjusting failed)\n")
+		return
 	}
 
-	// notify input segments that their inputs have changed
-	{
-		results := make([]chan error, len(net.inSegments))
-		for i, in := range net.inSegments {
-			results[i] = make(chan error)
-			go func() { in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
-		}
-		for i, ch := range results {
-			if err := <-ch; err != nil {
-				return errors.Wrapf(err, "Couldn't get network outputs, notifying input segment %s that inputs have changed failed\n", net.inSegments[i].Name)
-			}
-		}
-	}
-
-	return nil
-}
-
-// returns what the network outputs were
-func (net *Network) Correct(inputs, targetOutputs []float64, learningRate float64) ([]float64, error) {
-	outs, err := net.GetOutputs(inputs, true)
+	cost, err = SquaredError(outs, targets)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Couldn't correct network, failed to get outputs\n")
+		err = errors.Wrapf(err, "Couldn't calculate cost after correcting network, SquaredError() failed\n")
+		return
 	}
 
-	// calculate deltas
-	{
-		results := make([]chan error, len(net.inSegments))
-		for i, in := range net.inSegments {
-			results[i] = make(chan error)
-			go func() { in.comLine <- commandWrapper{deltas, results[i], []interface{}{targetOutputs}} }()
-		}
-		for i, ch := range results {
-			if err := <-ch; err != nil {
-				return nil, errors.Wrapf(err, "Couldn't correct network, calculating deltas of network input %s failed\n", net.inSegments[i].Name)
-			}
-		}
-	}
-
-	// adjust, starting at outputs
-	{
-		results := make([]chan error, len(net.outSegments))
-		for i, out := range net.outSegments {
-			results[i] = make(chan error)
-			go func() { out.comLine <- commandWrapper{adjust, results[i], []interface{}{learningRate, targetOutputs}} }()
-		}
-		for i, ch := range results {
-			if err := <-ch; err != nil {
-				return nil, errors.Wrapf(err, "Couldn't correct network, adjusting network output %s failed\n", net.outSegments[i].Name)
-			}
-		}
-	}
-
-	// now that we've adjusted things, we need to tell them that their inputs have changed
-	{
-		results := make([]chan error, len(net.inSegments))
-		for i, in := range net.inSegments {
-			results[i] = make(chan error)
-			go func() { in.comLine <- commandWrapper{com: inputsChanged, res: results[i]} }()
-		}
-		for i, ch := range results {
-			if err := <-ch; err != nil {
-				return nil, errors.Wrapf(err, "Couldn't correct network, notifying that inputs changed for input %s failed\n", net.inSegments[i].Name)
-			}
-		}
-	}
-
-	return outs, nil
-}
-
-type arrWithIndexes struct {
-	values  []float64
-	indexes []int
-}
-
-func (a arrWithIndexes) Len() int {
-	return len(a.values)
-}
-func (a arrWithIndexes) Less(i, j int) bool {
-	return a.values[i] > a.values[j]
-}
-func (a arrWithIndexes) Swap(i, j int) {
-	a.values[i], a.values[j] = a.values[j], a.values[i]
-	a.indexes[i], a.indexes[j] = a.indexes[j], a.indexes[i]
-}
-
-// copies the given slice
-func sortValues(vs []float64) []int {
-	cop := make([]float64, len(vs))
-	copy(cop, vs)
-	arr := arrWithIndexes{cop, make([]int, len(cop))}
-	for i := range arr.indexes {
-		arr.indexes[i] = i
-	}
-	sort.Sort(arr)
-	return arr.indexes
+	return
 }
 
 type Datum struct {
-	Inputs, Outputs []float64
+	Inputs  []float64
+	Outputs []float64
 }
 
-func SquaredError(a, b []float64) (float64, error) {
-	if len(a) != len(b) {
-		return 0, errors.Errorf("Can't get squared error, len(a) != len(b) (%d != %d)", len(a) != len(b))
-	}
-
-	var sum float64
-	for i := range a {
-		sum += math.Pow(a[i]-b[i], 2)
-	}
-
-	return sum, nil
+func (d Datum) fits(net *Network) bool {
+	return len(d.Inputs) == len(net.input.values) && len(d.Outputs) == len(net.output.values)
 }
 
-// @CHANGE : allow for changing learning rates
-// returns: average squared error, percentage correct
-func (net *Network) Train(data []*Datum, learningRate float64) (float64, float64, error) {
-	percentCorrect, avgErr := 0.0, 0.0
+type TrainArgs struct {
+	Data func(int, int, chan struct {
+		Datum
+		Epoch bool
+	}, *error)
 
-	for i, d := range data {
-		if len(d.Outputs) != len(net.outputs) {
-			return 0, 0, errors.Errorf("Can't train network, len(data[%d].Outputs) != len(net.outputs) (%d != %d)", i, len(d.Outputs), len(net.outputs))
-		}
+	TestData func(chan Datum, *error)
 
-		outs, err := net.Correct(d.Inputs, d.Outputs, learningRate)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't train network, correction failed on datum %d", i)
-		}
+	TrainBeforeTest int
 
-		// @CHANGE : should allow for multiple correct answer
-		testRankings := sortValues(d.Outputs)
-		rankings := sortValues(outs)
-		if rankings[0] == testRankings[0] {
-			percentCorrect += 100.0 / float64(len(data))
-		}
+	Results chan struct {
+		// the average error/cost from the past batch/epoch/test
+		Avg float64
 
-		sqrdErr, err := SquaredError(outs, d.Outputs)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't train network, failed to get squared error on datum %d", i)
-		}
+		// the percent correct from the past batch/epoch/test,
+		// as determined by IsCorrect()
+		Percent float64
 
-		avgErr += sqrdErr / float64(len(data))
+		// Epoch is true if the result is for the entire epoch
+		// IsTest is true if the result is from test data
+		// If neither is true, the result is from a (mini-)batch
+		Epoch, IsTest bool
 	}
+
+	Err *error
+}
+
+func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
+	res := args.Results
+	errPtr := args.Err
+
+	// error checking
+	{
+		if errPtr == nil {
+			if res != nil {
+				close(res)
+			}
+			return
+		} else if *errPtr != nil {
+			if res != nil {
+				close(res)
+			}
+			return
+		} else if res == nil {
+			if errPtr != nil && *errPtr == nil {
+				*errPtr = errors.Errorf("Couldn't *Network.Train(), provided Results channel is nil")
+			}
+			return
+		} else if args.Data == nil {
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided Data function is nil")
+			close(res)
+			return
+		} else if args.TestData == nil && args.TrainBeforeTest != 0 {
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided TestData function is nil")
+			close(res)
+			return
+		} else if args.TrainBeforeTest < 0 {
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided 'TrainBeforeTest' < 0 (%d)", args.TrainBeforeTest)
+			close(res)
+			return
+		}
+	}
+
+	defer close(res)
+
+	var iteration, epoch, epochSize int
+	var epochErr, epochPercent float64
+
+	var dataSrc chan struct {
+		Datum
+		Epoch bool
+	}
+	var dataSrcErr error
+
+	for {
+		if epoch >= maxEpochs {
+			break
+		}
+
+		if args.TrainBeforeTest > 0 && iteration % args.TrainBeforeTest == 0 {
+			avg, percent, err := net.Test(args.TestData)
+			if err != nil {
+				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d (epoch %d) failed\n", iteration, epoch)
+				return
+			}
+
+			res <- struct {
+				Avg, Percent  float64
+				Epoch, IsTest bool
+			}{avg, percent, false, true}
+		}
+
+		{
+			dataSrc = make(chan struct {
+				Datum
+				Epoch bool
+			})
+
+			go args.Data(1, iteration, dataSrc, &dataSrcErr)
+		}
+
+		d := <-dataSrc
+		if dataSrcErr != nil {
+			*errPtr = errors.Wrapf(dataSrcErr, "Couldn't *Network.Train(), fetching data on iteration %d failed\n", iteration)
+			return
+		} else if d.Inputs == nil && d.Outputs == nil && d.Epoch == false { // check to see if the struct has values that aren't initialized
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), received empty struct from fetching data on iteration %d\n", iteration)
+			return
+		} else if !d.fits(net) {
+			*errPtr = errors.Errorf("Couldn't *Network.Train(), Datum at iteration %d (epoch %d) had improper dimensions for network (lengths: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - %d\n", iteration, epoch, len(net.input.values), len(d.Inputs), len(net.output.values), len(d.Outputs))
+			return
+		}
+
+		cost, outs, err := net.Correct(d.Inputs, d.Outputs, learningRate)
+		if err != nil {
+			*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed (on iteration %d, epoch %d)\n", iteration, epoch)
+			return
+		}
+		epochErr += cost // will be divided when we know how big the epoch is
+
+		correct := IsCorrect(outs, d.Outputs)
+		if correct {
+			epochPercent += 100
+		}
+
+		iteration++
+		epochSize++
+
+		{
+			var correctPercent float64
+			if correct {
+				correctPercent = 100
+			}
+
+			res <- struct {
+				Avg, Percent  float64
+				Epoch, IsTest bool
+			}{cost, correctPercent, false, false}
+		}
+
+		// if it's the end of the epoch, send the information back
+		if d.Epoch {
+			epochErr /= float64(epochSize)
+			epochPercent /= float64(epochSize)
+			epochSize = 0
+			epoch++
+
+			res <- struct {
+				Avg, Percent  float64
+				Epoch, IsTest bool
+			}{epochErr, epochPercent, true, false}
+
+			epochErr, epochPercent = 0.0, 0.0
+		}
+	}
+}
+
+func (net *Network) Test(data func(chan Datum, *error)) (float64, float64, error) {
+	dataSrc := make(chan Datum)
+	var dataSrcErr error
+	go data(dataSrc, &dataSrcErr)
+
+	i := 0
+	var avgErr, percentCorrect float64
+	for d := range dataSrc {
+		if !d.fits(net) {
+			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given Datum had improper dimensions (lenghs: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - d", len(net.input.values), len(d.Inputs), len(net.output.values), len(d.Outputs))
+		}
+
+		if dataSrcErr != nil {
+			return 0, 0, errors.Wrapf(dataSrcErr, "Couldn't *Network.Test(), failed to get data for test iteration %d\n", i)
+		} else if d.Inputs == nil && d.Outputs == nil {
+			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given datum struct has not been initialized for test iteration %d", i)
+		}
+
+		outs, err := net.GetOutputs(d.Inputs)
+		if err != nil {
+			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), getting outputs for test iteration %d failed\n", i)
+		}
+
+		c, err := SquaredError(outs, d.Outputs)
+		if err != nil {
+			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), cost function failed on test iteration %d\n", i)
+		}
+		avgErr += c
+
+		if IsCorrect(outs, d.Outputs) {
+			percentCorrect += 100.0
+		}
+
+		i++
+	}
+
+	avgErr /= float64(i)
+	percentCorrect /= float64(i)
 
 	return avgErr, percentCorrect, nil
 }
 
-// returns: average squared error, percentage correct
-func (net *Network) Test(data []*Datum) (float64, float64, error) {
-	percentCorrect, avgErr := 0.0, 0.0
+// returns a function that works to satisfy TrainArgs.Data
+// data[n] should have length 2
+// data[n][0] should be inputs, data[n][1] should be outputs
+func TrainCh(data [][][]float64) (func(int, int, chan struct {
+		Datum
+		Epoch bool
+	}, *error), error) {
 
-	for i, d := range data {
-		if len(d.Outputs) != len(net.outputs) {
-			return 0, 0, errors.Errorf("Can't test network, len(data[%d].Outputs) != len(net.outputs) (%d != %d)", i, len(d.Outputs), len(net.outputs))
+	// check that all of the data are okay
+	for i := range data {
+		if len(data[i]) != 2 {
+			return nil, errors.Errorf("Can't get function to provide to *Network.Train(), len(data[%d]) != 2 (%d)", i, len(data[i]))
 		}
-
-		outs, err := net.GetOutputs(d.Inputs, true)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't test network, getting outputs of network with data[%d] failed", i)
-		}
-
-		// @CHANGE : should allow for multiple correct answers
-		testRankings := sortValues(d.Outputs)
-		rankings := sortValues(outs)
-		if rankings[0] == testRankings[0] {
-			percentCorrect += 100.0 / float64(len(data))
-		}
-
-		sqrdErr, err := SquaredError(outs, d.Outputs)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't test network, failed to get squared error with data[%d]", i)
-		}
-
-		avgErr += sqrdErr / float64(len(data))
 	}
 
-	return avgErr, percentCorrect, nil
+	return func(amount, start int, ch chan struct {
+			Datum
+			Epoch bool
+		}, err *error) {
+		
+		for i := 0; i < amount; i++ {
+			index := (start + i) % len(data)
+
+			var epoch bool
+			if index == len(data) - 1 {
+				epoch = true
+			}
+
+			ch <- struct {
+				Datum
+				Epoch bool
+			}{Datum{data[index][0], data[index][1]}, epoch}
+		}
+
+		close(ch)
+		return
+	}, nil
+}
+
+// works to satisfy TrainArgs.TestData | *Network.Test(.data)
+// data[n] should have length 2
+// data[n][0] should be inputs, data[n][1] should be outputs
+func TestCh(data [][][]float64) (func(chan Datum, *error), error) {
+	// check that all of the data are okay
+	for i := range data {
+		if len(data[i]) != 2 {
+			return nil, errors.Errorf("Can't get function to provide to *Network.Test(), len(data[%d]) != 2 (%d)", i, len(data[i]))
+		}
+	}
+
+	return func(ch chan Datum, err *error) {
+		for _, d := range data {
+			ch <- Datum{d[0], d[1]}
+		}
+
+		close(ch)
+		return
+	}, nil
 }
