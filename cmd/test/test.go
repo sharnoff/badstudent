@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/sharnoff/smartlearning/badstudent"
+	"github.com/sharnoff/smartlearning/badstudent/costfunctions"
 
 	"fmt"
 )
@@ -16,7 +17,7 @@ func main() {
 
 	// these are the main adjustable variables
 	learningRate := 1.0
-	maxEpochs := 750
+	maxEpochs := 1000
 
 	fmt.Println("Setting up network...")
 	net := new(badstudent.Network)
@@ -48,9 +49,10 @@ func main() {
 	}
 
 	args := badstudent.TrainArgs{
-		Data:         dataSrc,
-		Results:      res,
-		Err:          &err,
+		Data:     dataSrc,
+		Results:  res,
+		CostFunc: costfunctions.SquaredError(),
+		Err:      &err,
 	}
 
 	fmt.Println("Starting training...")

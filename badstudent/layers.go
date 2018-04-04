@@ -130,7 +130,7 @@ func (l *Layer) evaluate() {
 			}
 		}
 
-		l.values[v] = 0.5 + 0.5*math.Tanh(0.5*sum)
+		l.values[v] = 0.5 + 0.5*math.Tanh(0.5*sum) // equivalent to the logistic function
 	}
 
 	l.status = evaluated
@@ -139,7 +139,7 @@ func (l *Layer) evaluate() {
 // calculates the deltas for each value of the layer
 //
 // calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
-func (l *Layer) getDeltas(targets []float64) error {
+func (l *Layer) getDeltas(rangeCostDeriv func(func(int, float64)) error) error {
 	l.statusMux.Lock()
 	defer l.statusMux.Unlock()
 	if l.status < evaluated {
@@ -148,27 +148,22 @@ func (l *Layer) getDeltas(targets []float64) error {
 		return nil
 	}
 
+	add := func(index int, addition float64) {
+		l.deltas[index] += addition
+	}
+
+	// reset all of the values
+	l.deltas = make([]float64, len(l.values))
+
+	if l.isOutput {
+		if err := rangeCostDeriv(add); err != nil {
+			return errors.Wrapf(err, "Can't get deltas of output layer %v, rangeCostDeriv() failed\n", l)
+		}
+	}
+
 	if l.output != nil {
-		deltaLocks := make([]sync.Mutex, len(l.deltas))
-
-		add := func(index int, addition float64) {
-			deltaLocks[index].Lock()
-			l.deltas[index] += addition
-			deltaLocks[index].Unlock()
-		}
-
-		l.deltas = make([]float64, len(l.deltas))
-
-		if err := l.output.inputDeltas(l, add, targets); err != nil {
+		if err := l.output.inputDeltas(l, add, rangeCostDeriv); err != nil {
 			return errors.Wrapf(err, "Can't get deltas of layer %v, input deltas of output failed\n", l)
-		}
-	} else {
-		if len(targets) != len(l.values) {
-			return errors.Errorf("Can't get deltas, len(targets) != len(l.values)")
-		}
-
-		for v := range l.values {
-			l.deltas[v] = (l.values[v] - targets[v]) * l.values[v] * (1 - l.values[v])
 		}
 	}
 
@@ -179,7 +174,7 @@ func (l *Layer) getDeltas(targets []float64) error {
 // provides the deltas of each value to getDeltas()
 //
 // calls getDeltas() of self before running
-func (l *Layer) inputDeltas(input *Layer, add func(int, float64), targets []float64) error {
+func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv func(func(int, float64)) error) error {
 	l.statusMux.Lock()
 	if l.status < evaluated {
 		l.statusMux.Unlock()
@@ -190,7 +185,7 @@ func (l *Layer) inputDeltas(input *Layer, add func(int, float64), targets []floa
 		// unlock status so that getDeltas() can lock it
 		l.statusMux.Unlock()
 
-		if err := l.getDeltas(targets); err != nil {
+		if err := l.getDeltas(rangeCostDeriv); err != nil {
 			return errors.Wrapf(err, "Can't provide input deltas of layer %v (to %v), getting own deltas failed\n", l, input)
 		}
 

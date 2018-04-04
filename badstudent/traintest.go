@@ -21,7 +21,8 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 	return dupe, nil
 }
 
-func (net *Network) Correct(inputs, targets []float64, learningRate float64) (cost float64, outs []float64, err error) {
+// expects that the given CostFunc will not be nil
+func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf CostFunction) (cost float64, outs []float64, err error) {
 	outs, err = net.GetOutputs(inputs)
 	if err != nil {
 		err = errors.Wrapf(err, "Couldn't correct network, getting outputs failed\n")
@@ -29,7 +30,11 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64) (co
 	}
 
 	net.outLayers[0].evaluate()
-	if err = net.inLayers[0].getDeltas(targets); err != nil {
+
+	rangeCostDeriv := func(add func(int, float64)) error {
+		return cf.Deriv(net.outLayers[0].values, targets, add)
+	}
+	if err = net.inLayers[0].getDeltas(rangeCostDeriv); err != nil {
 		err = errors.Wrapf(err, "Couldn't correct network, getting deltas failed\n")
 		return
 	}
@@ -39,7 +44,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64) (co
 		return
 	}
 
-	cost, err = SquaredError(outs, targets)
+	cost, err = cf.Cost(outs, targets)
 	if err != nil {
 		err = errors.Wrapf(err, "Couldn't calculate cost after correcting network, SquaredError() failed\n")
 		return
@@ -58,14 +63,41 @@ func (d Datum) fits(net *Network) bool {
 }
 
 type TrainArgs struct {
+	// sends requested amount of data over the provided channel
+	// args:
+	//	batchSize int
+	//		the amount of data that *Network.Train() will expect to receive
+	//	iteration int
+	// 		a counter for the number of data that have already been used.
+	//		This does not work with variable dataset sizes
+	//	dataSrc chan struct{Datum, bool}
+	//		a channel to send data on
+	//		unbuffered, sends block until recieved by *Network.Train()
+	//		Epoch is only true if this is the last Datum in the set
+	//	err *error
+	//		A place for the function to return error4
 	Data func(int, int, chan struct {
 		Datum
 		Epoch bool
 	}, *error)
 
+	// sends the testing data (dev set) over the channel
+	// can only be nil if TrainBeforeTest == 0
+	// args:
+	//	dataSrc chan Datum
+	//		a channel to send the testing data on
+	//		unbuffered, sends block until recieved by *Network.Test()
+	//	err *error
+	//		A place for the function to return error
 	TestData func(chan Datum, *error)
 
+	// the number of training data that *Network.Train() will optimize for before testing
+	// must be >= 0. If equal to 0, it will never test (allowing TestData to be nil)
 	TrainBeforeTest int
+
+	// calculates the cost / error for the network on that datum
+	// used for both training and testing
+	CostFunc CostFunction
 
 	Results chan struct {
 		// the average error/cost from the past batch/epoch/test
@@ -102,19 +134,23 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			return
 		} else if res == nil {
 			if errPtr != nil && *errPtr == nil {
-				*errPtr = errors.Errorf("Couldn't *Network.Train(), provided Results channel is nil")
+				*errPtr = errors.Errorf("Can't *Network.Train(), provided Results channel is nil")
 			}
 			return
 		} else if args.Data == nil {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided Data function is nil")
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided Data function is nil")
 			close(res)
 			return
 		} else if args.TestData == nil && args.TrainBeforeTest != 0 {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided TestData function is nil")
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided TestData function is nil")
 			close(res)
 			return
 		} else if args.TrainBeforeTest < 0 {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided 'TrainBeforeTest' < 0 (%d)", args.TrainBeforeTest)
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'TrainBeforeTest' < 0 (%d)", args.TrainBeforeTest)
+			close(res)
+			return
+		} else if args.CostFunc == nil {
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided CostFunction is nil")
 			close(res)
 			return
 		}
@@ -170,7 +206,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			return
 		}
 
-		cost, outs, err := net.Correct(d.Inputs, d.Outputs, learningRate)
+		cost, outs, err := net.Correct(d.Inputs, d.Outputs, learningRate, args.CostFunc)
 		if err != nil {
 			*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed (on iteration %d, epoch %d)\n", iteration, epoch)
 			return
