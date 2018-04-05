@@ -1,10 +1,8 @@
 package badstudent
 
 import (
-	"github.com/pkg/errors"
+	"sort"
 	"sync"
-	"math"
-	// "fmt"
 )
 
 type Layer struct {
@@ -13,239 +11,104 @@ type Layer struct {
 	// and may be nil
 	Name string
 
+	// used for validation during setup
+	hostNetwork *Network
+
 	// the values of the layer -- essentially its outputs
-	//
-	// technically relates to the values after activation functions
 	values  []float64
 
 	// the derivative of each value w.r.t. the total cost
 	// of the particular training example
-	//
-	// technically relates to the values before activation functions
 	deltas  []float64 // δ
 
 	// soon to be removed
 	weights [][]float64
 
-	input  *Layer
-	output *Layer
+	// the layers that the given layer inputs from
+	// could be nil
+	inputs  []*Layer
+
+	// for each layer, the sum of the number of its values and those
+	// of layers in previous indexes
+	// ex: the index for the last input will have the total
+	// number of input values to the layer
+	numInputs []int
+
+	// the layers that the given layer outputs to
+	// can be nil. Can also be non-nil and layer is an output
+	outputs []*Layer
 
 	// whether or not the layer's values are part of the set of
 	// output values to the network
 	isOutput bool
 
+	// what index in the network outputs the values of the layer start at
+	// ex: for the first output layer, its 'placeInOutputs' would be 0
+	placeInOutputs int
+
 	// keeps track of what has been calculated or completed for the layer
-	status    status_
+	status status_
 
 	// a lock for 'status'
 	statusMux sync.Mutex
 }
 
-// soon to be removed
-const bias_value float64 = 1
-
-type status_ int8
-
-const (
-	// initialized  status_ = iota // 0
-	checkOuts    status_ = iota // 1
-	changed      status_ = iota // 2
-	evaluated    status_ = iota // 3
-	deltas       status_ = iota // 4
-	adjusted     status_ = iota // 5
-	// weightsAdded status_ = iota // 6
-)
-
-// returns the the Name of the Layer, surrounded by double quotes
-func (l *Layer) String() string {
-	return "\"" + l.Name + "\""
+// returns the number of values that the layer has
+func (l *Layer) Size() int {
+	return len(l.values)
 }
 
-// checks that the Layer (and none of its outputs) don't affect
-// the outputs of the network
+// returns the value of the input to the layer at that index
 //
-// returns error if l.isOutput == false but len(l.outputs) == 0
-func (l *Layer) checkOutputs() error {
-	l.statusMux.Lock()
-	defer l.statusMux.Unlock()
-	if l.status >= checkOuts {
-		return nil
+// allows panics from index out of bounds and nil pointer
+// a nil pointer means that the layer has no inputs
+func (l *Layer) InputValue(index int) float64 {
+	greaterThan := func(i int) bool {
+		return index < l.numInputs[i]
 	}
 
-	if l.output == nil {
-		if !l.isOutput {
-			return errors.Errorf("Checked outputs; layer %v has no effect on network outputs\n", l)
-		}
-	} else if err := l.output.checkOutputs(); err != nil {
-		return errors.Wrapf(err, "Checking outputs of layer %v from %v failed\n", l.output, l)
-	}
+	i := sort.Search(l.numInputs[len(l.inputs) - 1], greaterThan)
 
-	l.status = checkOuts
-	return nil
+	return l.inputs[i].values[ len(l.inputs[i].values) - index + l.numInputs[i] ]
 }
 
-// acts as a 'reset button' for the layer,
-// signifying that it now will need to perform its operations again
+// returns the number of layers that the layer receives input from
+func (l *Layer) NumInputLayers() int {
+	return len(l.inputs)
+}
+
+// returns the total number of input values to the layer
+func (l *Layer) NumInputs() int {
+	if len(l.inputs) == 0 {
+		return 0
+	}
+
+	return l.numInputs[len(l.inputs) - 1]
+}
+
+// Returns the number of values that provide input to the layer
+// before the layer at the given index does
+// Can provide index of *Layer.NumInputLayers(), which will return total number of inputs
 //
-// calls recursively on outputs
-func (l *Layer) inputsChanged() {
-	l.statusMux.Lock()
-	if l.status < evaluated {
-		l.statusMux.Unlock()
-		return
-	}
-
-	l.status = changed
-	l.statusMux.Unlock()
-
-	if l.output != nil {
-		l.output.inputsChanged()
+// will allow the index out of bounds panic to go through if index is not in range
+func (l *Layer) PreviousInputs(index int) int {
+	if index == 0 {
+		return 0
+	} else {
+		return l.numInputs[index - 1]
 	}
 }
 
-// updates the values of the layer so that they are accurate, given the inputs
-//
-// calls recursively on inputs before running
-func (l *Layer) evaluate() {
-	l.statusMux.Lock()
-	defer l.statusMux.Unlock()
-	if l.status >= evaluated {
-		return
-	} else if l.input == nil {
-		l.status = evaluated
-		return
+// returns a single slice containing a copy of all of
+// the input values to the layer, in order
+func (l *Layer) CopyOfInputs() []float64 {
+	
+	c := make([]float64, l.NumInputs())
+	start := 0
+	for _, in := range l.inputs {
+		copy(c[start : start + in.Size()], in.values)
+		start += in.Size()
 	}
 
-	if l.input != nil {
-		l.input.evaluate()
-	}
-
-	for v := range l.values {
-		var sum float64 // it may be better to just use l.values[v]
-		for in := range l.weights[v] {
-			if in != len(l.weights[v]) - 1 {
-				sum += l.input.values[in] * l.weights[v][in]
-			} else {
-				sum += bias_value * l.weights[v][in]
-			}
-		}
-
-		l.values[v] = 0.5 + 0.5*math.Tanh(0.5*sum) // equivalent to the logistic function
-	}
-
-	l.status = evaluated
-}
-
-// calculates the deltas for each value of the layer
-//
-// calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
-func (l *Layer) getDeltas(rangeCostDeriv func(func(int, float64)) error) error {
-	l.statusMux.Lock()
-	defer l.statusMux.Unlock()
-	if l.status < evaluated {
-		return errors.Errorf("Can't get deltas of layer %v, has not been evaluated", l)
-	} else if l.status >= deltas {
-		return nil
-	}
-
-	add := func(index int, addition float64) {
-		l.deltas[index] += addition
-	}
-
-	// reset all of the values
-	l.deltas = make([]float64, len(l.values))
-
-	if l.isOutput {
-		if err := rangeCostDeriv(add); err != nil {
-			return errors.Wrapf(err, "Can't get deltas of output layer %v, rangeCostDeriv() failed\n", l)
-		}
-	}
-
-	if l.output != nil {
-		if err := l.output.inputDeltas(l, add, rangeCostDeriv); err != nil {
-			return errors.Wrapf(err, "Can't get deltas of layer %v, input deltas of output failed\n", l)
-		}
-	}
-
-	l.status = deltas
-	return nil
-}
-
-// provides the deltas of each value to getDeltas()
-//
-// calls getDeltas() of self before running
-func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv func(func(int, float64)) error) error {
-	l.statusMux.Lock()
-	if l.status < evaluated {
-		l.statusMux.Unlock()
-		return errors.Errorf("Can't provide input deltas of layer %v (to %v), has not been evaluated", l, input)
-	}
-
-	if l.status < deltas {
-		// unlock status so that getDeltas() can lock it
-		l.statusMux.Unlock()
-
-		if err := l.getDeltas(rangeCostDeriv); err != nil {
-			return errors.Wrapf(err, "Can't provide input deltas of layer %v (to %v), getting own deltas failed\n", l, input)
-		}
-
-		l.statusMux.Lock()
-	}
-
-	// calculate the deltas, will be replaced
-	// also handles tanh
-	for in := range l.input.values {
-		var sum float64
-		for v := range l.values {
-			sum += l.deltas[v] * l.weights[v][in]
-		}
-
-		// multiply to handle tanh
-		sum *= l.input.values[in] * (1 - l.input.values[in])
-		add(in, sum)
-	}
-
-	l.statusMux.Unlock()
-	return nil
-}
-
-// recurses to inputs after running
-// α
-func (l *Layer) adjust(learningRate float64) error {
-	l.statusMux.Lock()
-	if l.status < deltas {
-		l.statusMux.Unlock()
-		return errors.Errorf("Can't adjust layer %v, has not calculated deltas", l)
-	} else if l.status >= adjusted {
-		l.statusMux.Unlock()
-		return nil
-	} else if l.input == nil {
-		l.status = adjusted
-		l.statusMux.Unlock()
-		return nil
-	}
-
-	for v := range l.deltas {
-		for w := range l.weights[v] {
-			// the gradient is: l.input.values[w] * l.deltas[v]
-			if w != len(l.weights[v]) - 1 {
-				l.weights[v][w] += -1 * learningRate * l.input.values[w] * l.deltas[v]
-			} else {
-				l.weights[v][w] += -1 * learningRate * bias_value * l.deltas[v]
-			}
-		}
-	}
-
-	l.status = adjusted
-	l.statusMux.Unlock()
-
-	if l.input != nil {
-		if err := l.input.adjust(learningRate); err != nil {
-			return errors.Wrapf(err, "Failed to recurse after adjusting\n")
-		}
-	}
-
-	l.inputsChanged()
-
-	return nil
+	return c
 }

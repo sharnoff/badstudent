@@ -28,13 +28,14 @@ func (c squarederror) Cost(values, targets []float64) (float64, error) {
 	return totalErr / float64(len(values)), nil
 }
 
-func (c squarederror) Deriv(outputs, targets []float64, returnFunc func(int, float64)) error {
-	for i := range outputs {
+func (c squarederror) Deriv(outputs, targets []float64, start, end int, returnFunc func(int, float64)) error {
+	
+	for i := start; i < end; i++ {
 		deriv := outputs[i] - targets[i]
 
 		// to handle tanh, will be removed
 		deriv *= outputs[i] * (1 - outputs[i])
-		returnFunc(i, deriv)
+		returnFunc(i - start, deriv)
 	}
 
 	return nil

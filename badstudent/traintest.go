@@ -7,17 +7,21 @@ import (
 // returns a copy of the output values of the network, given the inputs
 // returns error if the number of given inputs doesn't match the number of inputs to the network
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
-	if len(inputs) != len(net.inLayers[0].values) {
-		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inLayers[0].values))
+	if len(inputs) != len(net.inputs) {
+		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
 	}
 
-	copy(net.inLayers[0].values, inputs)
-	net.inLayers[0].inputsChanged()
+	copy(net.inputs, inputs)
+	for _, in := range net.inLayers {
+		in.inputsChanged()
+	}
 
-	net.outLayers[0].evaluate()
+	for _, out := range net.outLayers {
+		out.evaluate()
+	}
 
-	dupe := make([]float64, len(net.outLayers[0].values))
-	copy(dupe, net.outLayers[0].values)
+	dupe := make([]float64, len(net.outputs))
+	copy(dupe, net.outputs)
 	return dupe, nil
 }
 
@@ -29,19 +33,20 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 		return
 	}
 
-	net.outLayers[0].evaluate()
-
-	rangeCostDeriv := func(add func(int, float64)) error {
-		return cf.Deriv(net.outLayers[0].values, targets, add)
-	}
-	if err = net.inLayers[0].getDeltas(rangeCostDeriv); err != nil {
-		err = errors.Wrapf(err, "Couldn't correct network, getting deltas failed\n")
-		return
+	rangeCostDeriv := func(start, end int, add func(int, float64)) error {
+		return cf.Deriv(net.outputs, targets, start, end, add)
 	}
 
-	if err = net.outLayers[0].adjust(learningRate); err != nil {
-		err = errors.Wrapf(err, "Couldn't correct network (adjusting failed)\n")
-		return
+	for i, in := range net.inLayers {
+		if err = in.getDeltas(rangeCostDeriv); err != nil {
+			err = errors.Wrapf(err, "Couldn't correct network, getting deltas of network input %v (#%d) failed\n", in, i)
+		}
+	}
+	
+	for i, out := range net.outLayers {
+		if err = out.adjust(learningRate); err != nil {
+			err = errors.Wrapf(err, "Couldn't correct network, adjusting failed for output %v (#%d)\n", out, i)
+		}
 	}
 
 	cost, err = cf.Cost(outs, targets)
@@ -59,7 +64,7 @@ type Datum struct {
 }
 
 func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == len(net.inLayers[0].values) && len(d.Outputs) == len(net.outLayers[0].values)
+	return len(d.Inputs) == len(net.inputs) && len(d.Outputs) == len(net.outputs)
 }
 
 type TrainArgs struct {
@@ -173,7 +178,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 		}
 
 		if args.TrainBeforeTest > 0 && iteration % args.TrainBeforeTest == 0 {
-			avg, percent, err := net.Test(args.TestData)
+			avg, percent, err := net.Test(args.TestData, args.CostFunc)
 			if err != nil {
 				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d (epoch %d) failed\n", iteration, epoch)
 				return
@@ -250,7 +255,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 	}
 }
 
-func (net *Network) Test(data func(chan Datum, *error)) (float64, float64, error) {
+func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction) (float64, float64, error) {
 	dataSrc := make(chan Datum)
 	var dataSrcErr error
 	go data(dataSrc, &dataSrcErr)
@@ -273,7 +278,7 @@ func (net *Network) Test(data func(chan Datum, *error)) (float64, float64, error
 			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), getting outputs for test iteration %d failed\n", i)
 		}
 
-		c, err := SquaredError(outs, d.Outputs)
+		c, err := costFunc.Cost(outs, d.Outputs)
 		if err != nil {
 			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), cost function failed on test iteration %d\n", i)
 		}

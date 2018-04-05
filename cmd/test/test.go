@@ -23,16 +23,21 @@ func main() {
 	net := new(badstudent.Network)
 	{
 		var err error
+		var l, hl *badstudent.Layer
 
-		if err = net.Add("input", 2); err != nil {
+		if l, err = net.Add("input", 2); err != nil {
 			panic(err.Error())
 		}
 
-		if err = net.Add("hidden layer neurons", 3); err != nil {
+		if hl, err = net.Add("hidden layer neurons", 1, l); err != nil {
 			panic(err.Error())
 		}
 
-		if err = net.Add("output neurons", 1); err != nil {
+		if l, err = net.Add("output neurons", 1, l, hl); err != nil {
+			panic(err.Error())
+		}
+
+		if err = net.SetOutputs(l); err != nil {
 			panic(err.Error())
 		}
 	}

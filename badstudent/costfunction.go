@@ -19,6 +19,5 @@ type CostFunction interface {
 	//
 	// actual values and target values will always have the same length,
 	// start and end will always be a valid range
-	// Deriv([]float64, []float64, int, int, func(int, float64)) error
-	Deriv([]float64, []float64, func(int, float64)) error
+	Deriv([]float64, []float64, int, int, func(int, float64)) error
 }
