@@ -32,7 +32,8 @@ func (l *Layer) initWeights() {
 	}
 }
 
-func (net *Network) Add(name string, size int, inputs ...*Layer) (*Layer, error) {
+// name, optimizer can be nil
+func (net *Network) Add(name string, size int, opt Optimizer, inputs ...*Layer) (*Layer, error) {
 	if size < 1 {
 		return nil, errors.Errorf("Can't add layer to network, layer must have >= 1 values (%d)", size)
 	}
@@ -41,6 +42,7 @@ func (net *Network) Add(name string, size int, inputs ...*Layer) (*Layer, error)
 	l.Name = name
 	l.status = initialized
 	l.hostNetwork = net
+	l.opt = opt
 
 	if len(inputs) == 0 {
 		net.inLayers = append(net.inLayers, l)

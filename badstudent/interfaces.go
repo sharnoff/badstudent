@@ -1,4 +1,3 @@
-// defines the interface 'CostFunction'
 package badstudent
 
 type CostFunction interface {
@@ -6,6 +5,7 @@ type CostFunction interface {
 
 	// arguments: actual values, target values.
 	Cost([]float64, []float64) (float64, error)
+	// Cost(outputs, targets []float64) (float64, error)
 
 	// should provide the derivatives of the inputs to the cost function
 	// on the range [start, end), given by the two 'int's
@@ -20,4 +20,16 @@ type CostFunction interface {
 	// actual values and target values will always have the same length,
 	// start and end will always be a valid range
 	Deriv([]float64, []float64, int, int, func(int, float64)) error
+	// Deriv(outputs, targets []float64, start, end int, returnFunc func(int, float64)) error
+}
+
+type Optimizer interface {
+	// arguments: target layer, number of weights, gradient of weight at index,
+	// add to weight at index, learning rate
+	//
+	// number of weights can be 0
+	// gradient of weights, adding to weights allows panicing
+	// adding to weights is not thread-safe for repeated indexes
+	Run(*Layer, int, func(int) float64, func(int, float64), float64) error
+	// Run(l *Layer, size int, grad func(int) float64, add func(int, float64), learningRate float64) error
 }

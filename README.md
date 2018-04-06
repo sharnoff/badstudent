@@ -9,10 +9,10 @@ Current features:
 * real-time output of training status
 * custom cost functions for network output
 * free-form layer architecture (no recurrent features yet)
+* custom optimization functions for correction
 
 Future features:
 * different types of operations available as layers
-* custom optimization functions for existing layers
 * custom functions for variable learning rates
 * saving / loading of networks
 

@@ -24,6 +24,9 @@ type Layer struct {
 	// soon to be removed
 	weights [][]float64
 
+	// determines how the weights will be changed
+	opt Optimizer
+
 	// the layers that the given layer inputs from
 	// could be nil
 	inputs  []*Layer

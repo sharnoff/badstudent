@@ -217,15 +217,26 @@ func (l *Layer) adjust(learningRate float64) error {
 
 	inputs := l.CopyOfInputs()
 
-	for v := range l.deltas {
-		for w := range l.weights[v] {
-			// the gradient is: l.input.values[w] * l.deltas[v]
-			if w != len(l.weights[v]) - 1 {
-				l.weights[v][w] += -1 * learningRate * inputs[w] * l.deltas[v]
-			} else {
-				l.weights[v][w] += -1 * learningRate * bias_value * l.deltas[v]
-			}
+	grad := func(index int) float64 {
+		in := index % (len(inputs) + 1)
+		v := (index - in) / (len(inputs) + 1)
+
+		if in != len(inputs) {
+			return inputs[in] * l.deltas[v]
+		} else {
+			return bias_value * l.deltas[v]
 		}
+	}
+
+	add := func(index int, addend float64) {
+		in := index % (len(inputs) + 1)
+		v := (index - in) / (len(inputs) + 1)
+
+		l.weights[v][in] += addend
+	}
+
+	if err := l.opt.Run(l, (len(inputs) + 1) * l.Size(), grad, add, learningRate); err != nil {
+		return errors.Wrapf(err, "Couldn't adjust layer %v, running optimizer failed\n", l)
 	}
 
 	l.status = adjusted
