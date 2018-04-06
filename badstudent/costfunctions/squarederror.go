@@ -34,7 +34,7 @@ func (c squarederror) Deriv(outputs, targets []float64, start, end int, returnFu
 		deriv := outputs[i] - targets[i]
 
 		// to handle tanh, will be removed
-		deriv *= outputs[i] * (1 - outputs[i])
+		// deriv *= outputs[i] * (1 - outputs[i])
 		returnFunc(i - start, deriv)
 	}
 

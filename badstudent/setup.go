@@ -2,7 +2,7 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	"math/rand"
+	// "math/rand"
 )
 
 type Network struct {
@@ -13,27 +13,8 @@ type Network struct {
 	outputs []float64
 }
 
-func (l *Layer) initWeights() {
-	if l.inputs == nil {
-		return
-	}
-
-	numInputs := 0
-	for _, in := range l.inputs {
-		numInputs += len(in.values)
-	}
-
-	l.weights = make([][]float64, len(l.values))
-	for v := range l.weights {
-		l.weights[v] = make([]float64, numInputs + 1) // +1 for bias
-		for in := range l.weights[v] {
-			l.weights[v][in] = (2 * rand.Float64() - 1) / float64(numInputs + 1)
-		}
-	}
-}
-
 // name, optimizer can be nil
-func (net *Network) Add(name string, size int, opt Optimizer, inputs ...*Layer) (*Layer, error) {
+func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Optimizer, inputs ...*Layer) (*Layer, error) {
 	if size < 1 {
 		return nil, errors.Errorf("Can't add layer to network, layer must have >= 1 values (%d)", size)
 	}
@@ -42,7 +23,12 @@ func (net *Network) Add(name string, size int, opt Optimizer, inputs ...*Layer) 
 	l.Name = name
 	l.status = initialized
 	l.hostNetwork = net
+	l.typ = typ
 	l.opt = opt
+	{
+		l.dims = make([]int, len(dims))
+		copy(l.dims, dims)
+	}
 
 	if len(inputs) == 0 {
 		net.inLayers = append(net.inLayers, l)
@@ -62,10 +48,13 @@ func (net *Network) Add(name string, size int, opt Optimizer, inputs ...*Layer) 
 			in.outputs = append(in.outputs, l)
 		}
 	}
-
+	
 	l.values = make([]float64, size)
 	l.deltas = make([]float64, size)
-	l.initWeights()
+
+	if err := typ.Init(l); err != nil {
+		return nil, errors.Wrapf(err, "Couldn't add layer %v to network, initializing Operator failed\n", l)
+	}
 
 	return l, nil
 }

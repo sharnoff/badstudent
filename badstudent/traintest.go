@@ -16,8 +16,10 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 		in.inputsChanged()
 	}
 
-	for _, out := range net.outLayers {
-		out.evaluate()
+	for i, out := range net.outLayers {
+		if err := out.evaluate(); err != nil {
+			return nil, errors.Wrapf(err, "Can't get outputs, network output layer %v (#%d) failed to evaluate\n", out, i)
+		}
 	}
 
 	dupe := make([]float64, len(net.outputs))

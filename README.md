@@ -5,14 +5,14 @@ Once the API is stable, documentation will be added outside of the codebase.
 
 Current features:
 * layers of feed-forward neurons with the logistic function serving as the activation funtion
-* easy supplying of data to train the network
-* real-time output of training status
-* custom cost functions for network output
+* different types of operations available as layers
 * free-form layer architecture (no recurrent features yet)
+* custom cost functions for network output
 * custom optimization functions for correction
+* hassle-free supplying of data to train the network
+* real-time output of training status
 
 Future features:
-* different types of operations available as layers
 * custom functions for variable learning rates
 * saving / loading of networks
 

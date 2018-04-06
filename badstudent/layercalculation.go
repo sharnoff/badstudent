@@ -3,7 +3,7 @@ package badstudent
 import (
 	"github.com/pkg/errors"
 	// "sync"
-	"math"
+	// "math"
 	// "fmt"
 )
 
@@ -81,36 +81,28 @@ func (l *Layer) inputsChanged() {
 // updates the values of the layer so that they are accurate, given the inputs
 //
 // calls recursively on inputs before running
-func (l *Layer) evaluate() {
+func (l *Layer) evaluate() error {
 	l.statusMux.Lock()
 	defer l.statusMux.Unlock()
 	if l.status >= evaluated && l.status != adjusted {
-		return
+		return nil
 	} else if len(l.inputs) == 0 {
 		l.status = evaluated
-		return
+		return nil
 	}
 
-	for _, in := range l.inputs {
-		in.evaluate()
-	}
-
-	inputs := l.CopyOfInputs()
-
-	for v := range l.values {
-		var sum float64 // it may be better to just use l.values[v]
-		for in := range l.weights[v] {
-			if in != len(l.weights[v]) - 1 {
-				sum += inputs[in] * l.weights[v][in]
-			} else {
-				sum += bias_value * l.weights[v][in]
-			}
+	for i, in := range l.inputs {
+		if err := in.evaluate(); err != nil {
+			return errors.Wrapf(err, "Can't evaluate layer %v, evaluating input %v (#%d) failed\n", l, in, i)
 		}
+	}
 
-		l.values[v] = 0.5 + 0.5*math.Tanh(0.5*sum) // equivalent to the logistic function
+	if err := l.typ.Evaluate(l, l.values); err != nil {
+		return errors.Wrapf(err, "Couldn't evaluate layer %v, Operation evaluation failed\n", l)
 	}
 
 	l.status = evaluated
+	return nil
 }
 
 // calculates the deltas for each value of the layer
@@ -182,17 +174,8 @@ func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv
 		return errors.Errorf("Can't provide input deltas of layer %v to %v, %v is not an input of %v", l, input, input, l)
 	}
 
-	// the part that actually calculates the deltas
-	start := l.PreviousInputs(inputIndex)
-	for in := start; in < start + input.Size(); in++ {
-		var sum float64
-		for v := range l.values {
-			sum += l.deltas[v] * l.weights[v][in]
-		}
-
-		// multiply to handle tanh
-		sum *= input.values[in - start] * (1 - input.values[in - start])
-		add(in - start, sum)
+	if err := l.typ.InputDeltas(l, add, inputIndex); err != nil {
+		return errors.Wrapf(err, "Couldn't provide input deltas of layer %v to %v (#%d), Operator failed to get input deltas\n", l, input, inputIndex)
 	}
 
 	l.statusMux.Unlock()
@@ -215,28 +198,8 @@ func (l *Layer) adjust(learningRate float64) error {
 		return nil
 	}
 
-	inputs := l.CopyOfInputs()
-
-	grad := func(index int) float64 {
-		in := index % (len(inputs) + 1)
-		v := (index - in) / (len(inputs) + 1)
-
-		if in != len(inputs) {
-			return inputs[in] * l.deltas[v]
-		} else {
-			return bias_value * l.deltas[v]
-		}
-	}
-
-	add := func(index int, addend float64) {
-		in := index % (len(inputs) + 1)
-		v := (index - in) / (len(inputs) + 1)
-
-		l.weights[v][in] += addend
-	}
-
-	if err := l.opt.Run(l, (len(inputs) + 1) * l.Size(), grad, add, learningRate); err != nil {
-		return errors.Wrapf(err, "Couldn't adjust layer %v, running optimizer failed\n", l)
+	if err := l.typ.Adjust(l, l.opt, learningRate); err != nil {
+		return errors.Wrapf(err, "Couldn't adjust layer %v, Operator adjusting failed\n", l)
 	}
 
 	l.status = adjusted

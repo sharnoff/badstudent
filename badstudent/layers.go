@@ -3,6 +3,8 @@ package badstudent
 import (
 	"sort"
 	"sync"
+
+	// "fmt"
 )
 
 type Layer struct {
@@ -14,15 +16,18 @@ type Layer struct {
 	// used for validation during setup
 	hostNetwork *Network
 
+	// the dimensions of the layer, used mainly for setup
+	dims []int
+
+	// handles all of the actual operations from 
+	typ Operator
+
 	// the values of the layer -- essentially its outputs
 	values  []float64
 
 	// the derivative of each value w.r.t. the total cost
 	// of the particular training example
-	deltas  []float64 // δ
-
-	// soon to be removed
-	weights [][]float64
+	deltas  []float64 // δ3
 
 	// determines how the weights will be changed
 	opt Optimizer
@@ -61,18 +66,58 @@ func (l *Layer) Size() int {
 	return len(l.values)
 }
 
+// returns a copy of the dimensions of the layer, as provided by *Network.Add()
+func (l *Layer) Dimensions() []int {
+	d := make([]int, len(l.dims))
+	copy(d, l.dims)
+	return d
+}
+
+func (l *Layer) Value(index int) float64 {
+	return l.values[index]
+}
+
 // returns the value of the input to the layer at that index
 //
 // allows panics from index out of bounds and nil pointer
 // a nil pointer means that the layer has no inputs
+//
+// binary searches to find the value
 func (l *Layer) InputValue(index int) float64 {
 	greaterThan := func(i int) bool {
 		return index < l.numInputs[i]
 	}
 
-	i := sort.Search(l.numInputs[len(l.inputs) - 1], greaterThan)
+	i := sort.Search(len(l.inputs), greaterThan)
 
-	return l.inputs[i].values[ len(l.inputs[i].values) - index + l.numInputs[i] ]
+	if i > 0 {
+		index -= l.numInputs[i - 1]
+	}
+
+	return l.inputs[i].values[ index ]
+}
+
+// returns an unbuffered channel that goes through each value of the inputs
+func (l *Layer) InputIterator() chan float64 {
+	ch := make(chan float64)
+	go func() {
+		for _, in := range l.inputs {
+			for _, v := range in.values {
+				ch <- v
+			}
+		}
+
+		close(ch)
+	}()
+	return ch
+}
+
+// returns the 'delta' of the value at of the layer at the given index
+//
+// this is a SIMPLE FUNCTION. does not check if deltas have
+// been calculated before running.
+func (l *Layer) Delta(index int) float64 {
+	return l.deltas[index]
 }
 
 // returns the number of layers that the layer receives input from
@@ -87,6 +132,11 @@ func (l *Layer) NumInputs() int {
 	}
 
 	return l.numInputs[len(l.inputs) - 1]
+}
+
+// returns the size of the given input to the layer
+func (l *Layer) InputSize(index int) int {
+	return l.inputs[index].Size()
 }
 
 // Returns the number of values that provide input to the layer

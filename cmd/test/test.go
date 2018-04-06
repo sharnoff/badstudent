@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/sharnoff/smartlearning/badstudent"
+	"github.com/sharnoff/smartlearning/badstudent/operators"
 	"github.com/sharnoff/smartlearning/badstudent/costfunctions"
 	"github.com/sharnoff/smartlearning/badstudent/optimizers"
 
@@ -26,15 +27,23 @@ func main() {
 		var err error
 		var l, hl *badstudent.Layer
 
-		if l, err = net.Add("input", 2, nil); err != nil {
+		if l, err = net.Add("input", operators.Neurons(), 2, nil, nil); err != nil {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer neurons", 1, optimizers.GradientDescent(), l); err != nil {
+		if hl, err = net.Add("hidden layer neurons", operators.Neurons(), 1, nil, optimizers.GradientDescent(), l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", 1, optimizers.GradientDescent(), hl, l); err != nil {
+		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 1, nil, nil, hl); err != nil {
+			panic(err.Error())
+		}
+
+		if l, err = net.Add("output neurons", operators.Neurons(), 1, nil, optimizers.GradientDescent(), hl, l); err != nil {
+			panic(err.Error())
+		}
+
+		if l, err = net.Add("output logistic", operators.Logistic(), 1, nil, nil, l); err != nil {
 			panic(err.Error())
 		}
 
