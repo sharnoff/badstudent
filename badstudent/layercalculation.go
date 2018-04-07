@@ -10,13 +10,13 @@ import (
 type status_ int8
 
 const (
-	initialized  status_ = iota // 0
-	checkOuts    status_ = iota // 1
-	changed      status_ = iota // 2
-	evaluated    status_ = iota // 3
-	deltas       status_ = iota // 4
-	adjusted     status_ = iota // 5
-	// weightsAdded status_ = iota // 6
+	initialized status_ = iota // 0
+	checkOuts   status_ = iota // 1
+	changed     status_ = iota // 2
+	evaluated   status_ = iota // 3
+	deltas      status_ = iota // 4
+	adjusted    status_ = iota // 5
+	weightsAdded status_ = iota // 6
 )
 
 // soon to be removed
@@ -84,7 +84,7 @@ func (l *Layer) inputsChanged() {
 func (l *Layer) evaluate() error {
 	l.statusMux.Lock()
 	defer l.statusMux.Unlock()
-	if l.status >= evaluated && l.status != adjusted {
+	if l.status >= evaluated && l.status != weightsAdded {
 		return nil
 	} else if len(l.inputs) == 0 {
 		l.status = evaluated
@@ -184,7 +184,7 @@ func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv
 
 // recurses to inputs after running
 // α
-func (l *Layer) adjust(learningRate float64) error {
+func (l *Layer) adjust(learningRate float64, saveChanges bool) error {
 	l.statusMux.Lock()
 	if l.status < deltas {
 		l.statusMux.Unlock()
@@ -198,7 +198,7 @@ func (l *Layer) adjust(learningRate float64) error {
 		return nil
 	}
 
-	if err := l.typ.Adjust(l, l.opt, learningRate); err != nil {
+	if err := l.typ.Adjust(l, l.opt, learningRate, saveChanges); err != nil {
 		return errors.Wrapf(err, "Couldn't adjust layer %v, Operator adjusting failed\n", l)
 	}
 
@@ -206,8 +206,32 @@ func (l *Layer) adjust(learningRate float64) error {
 	l.statusMux.Unlock()
 
 	for i, in := range l.inputs {
-		if err := in.adjust(learningRate); err != nil {
+		if err := in.adjust(learningRate, saveChanges); err != nil {
 			return errors.Wrapf(err, "Failed to recurse after adjusting weights to layer %v (input %d) from layer %v\n", in, i, l)
+		}
+	}
+
+	return nil
+}
+
+// recurses to inputs after running
+func (l *Layer) addWeights() error {
+	l.statusMux.Lock()
+	if l.status >= weightsAdded {
+		l.statusMux.Unlock()
+		return nil
+	}
+
+	if err := l.typ.AddWeights(l); err != nil {
+		return errors.Wrapf(err, "Couldn't add weights for layer %v, Operator failed to add weights\n", l)
+	}
+
+	l.status = weightsAdded
+	l.statusMux.Unlock()
+
+	for i, in := range l.inputs {
+		if err := in.addWeights(); err != nil {
+			return errors.Wrapf(err, "Failed to recurse to %v (input %d) after adding weights of layer %v\n", in, i, l)
 		}
 	}
 

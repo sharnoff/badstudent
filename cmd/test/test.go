@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/sharnoff/smartlearning/badstudent"
-	"github.com/sharnoff/smartlearning/badstudent/operators"
 	"github.com/sharnoff/smartlearning/badstudent/costfunctions"
+	"github.com/sharnoff/smartlearning/badstudent/operators"
 	"github.com/sharnoff/smartlearning/badstudent/optimizers"
 
 	"fmt"
@@ -19,7 +19,13 @@ func main() {
 
 	// these are the main adjustable variables
 	learningRate := 1.0
-	maxEpochs := 1000
+	maxEpochs := 750
+	batchSize := 4
+
+	// alternate set that should work
+	// learningRate := 1.0
+	// maxEpochs := 300
+	// batchSize := 1
 
 	fmt.Println("Setting up network...")
 	net := new(badstudent.Network)
@@ -63,11 +69,19 @@ func main() {
 		panic(err.Error())
 	}
 
+	testData, err := badstudent.TestCh(dataset)
+	if err != nil {
+		panic(err.Error())
+	}
+
 	args := badstudent.TrainArgs{
-		Data:     dataSrc,
-		Results:  res,
-		CostFunc: costfunctions.SquaredError(),
-		Err:      &err,
+		Data:            dataSrc,
+		TestData:        testData,
+		TrainBeforeTest: 20,
+		BatchSize:       batchSize,
+		CostFunc:        costfunctions.SquaredError(false),
+		Results:         res,
+		Err:             &err,
 	}
 
 	fmt.Println("Starting training...")
@@ -75,9 +89,11 @@ func main() {
 
 	for r := range res {
 		if r.Epoch {
-			// fmt.Printf("Train → avg error: %v\t → percent correct: %v from EPOCH\n", r.Avg, r.Percent)
+			fmt.Printf("Epoch → error: %v\t → %v%% correct from EPOCH\n", r.Avg, r.Percent)
+		} else if r.IsTest {
+			fmt.Printf("Test  → error: %v\t → %v%% correct\n", r.Avg, r.Percent)
 		} else { // it should never be a test, because we didn't give it testing data
-			// fmt.Printf("Train → avg error: %v\t → percent correct: %v\n", r.Avg, r.Percent)
+			// fmt.Printf("Train → error: %v\t → %v%% correct\n", r.Avg, r.Percent)
 		}
 	}
 
@@ -86,4 +102,17 @@ func main() {
 	}
 
 	fmt.Println("Done training!")
+	fmt.Println("Testing!")
+
+	testSrc, err := badstudent.TestCh(dataset)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	_, _, err = net.Test(testSrc, costfunctions.SquaredError(true))
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fmt.Println("Done testing!")
 }

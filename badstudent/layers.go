@@ -3,7 +3,6 @@ package badstudent
 import (
 	"sort"
 	"sync"
-
 	// "fmt"
 )
 
@@ -19,22 +18,22 @@ type Layer struct {
 	// the dimensions of the layer, used mainly for setup
 	dims []int
 
-	// handles all of the actual operations from 
+	// handles all of the actual operations from
 	typ Operator
 
 	// the values of the layer -- essentially its outputs
-	values  []float64
+	values []float64
 
 	// the derivative of each value w.r.t. the total cost
 	// of the particular training example
-	deltas  []float64 // δ3
+	deltas []float64 // δ3
 
 	// determines how the weights will be changed
 	opt Optimizer
 
 	// the layers that the given layer inputs from
 	// could be nil
-	inputs  []*Layer
+	inputs []*Layer
 
 	// for each layer, the sum of the number of its values and those
 	// of layers in previous indexes
@@ -91,10 +90,10 @@ func (l *Layer) InputValue(index int) float64 {
 	i := sort.Search(len(l.inputs), greaterThan)
 
 	if i > 0 {
-		index -= l.numInputs[i - 1]
+		index -= l.numInputs[i-1]
 	}
 
-	return l.inputs[i].values[ index ]
+	return l.inputs[i].values[index]
 }
 
 // returns an unbuffered channel that goes through each value of the inputs
@@ -131,7 +130,7 @@ func (l *Layer) NumInputs() int {
 		return 0
 	}
 
-	return l.numInputs[len(l.inputs) - 1]
+	return l.numInputs[len(l.inputs)-1]
 }
 
 // returns the size of the given input to the layer
@@ -148,18 +147,18 @@ func (l *Layer) PreviousInputs(index int) int {
 	if index == 0 {
 		return 0
 	} else {
-		return l.numInputs[index - 1]
+		return l.numInputs[index-1]
 	}
 }
 
 // returns a single slice containing a copy of all of
 // the input values to the layer, in order
 func (l *Layer) CopyOfInputs() []float64 {
-	
+
 	c := make([]float64, l.NumInputs())
 	start := 0
 	for _, in := range l.inputs {
-		copy(c[start : start + in.Size()], in.values)
+		copy(c[start:start+in.Size()], in.values)
 		start += in.Size()
 	}
 

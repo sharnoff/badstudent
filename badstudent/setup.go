@@ -35,7 +35,7 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Opt
 	} else {
 		l.inputs = inputs
 		l.numInputs = make([]int, len(inputs))
-		
+
 		totalInputs := 0
 		for i, in := range inputs {
 			totalInputs += in.Size()
@@ -48,7 +48,7 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Opt
 			in.outputs = append(in.outputs, l)
 		}
 	}
-	
+
 	l.values = make([]float64, size)
 	l.deltas = make([]float64, size)
 
@@ -89,13 +89,13 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		net.inLayers = make([]*Layer, len(inputs))
 		copy(net.inLayers, inputs)
 	}
-	
+
 	// allocate a single slice for the inputs and outputs, to make copying to and from them easier
 	{
 		net.outputs = make([]float64, numOutValues)
 		place := 0
 		for _, out := range net.outLayers {
-			out.values = net.outputs[ place : place + out.Size() ]
+			out.values = net.outputs[place : place+out.Size()]
 			place += out.Size()
 		}
 
@@ -107,7 +107,7 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		net.inputs = make([]float64, numInputs)
 		place = 0
 		for _, in := range net.inLayers {
-			in.values = net.inputs[ place : place + in.Size() ]
+			in.values = net.inputs[place : place+in.Size()]
 			place += in.Size()
 		}
 	}

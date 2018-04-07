@@ -1,8 +1,8 @@
 package operators
 
 import (
-	"github.com/sharnoff/smartlearning/badstudent"
 	"github.com/pkg/errors"
+	"github.com/sharnoff/smartlearning/badstudent"
 	"math"
 )
 
@@ -12,7 +12,7 @@ func Logistic() logistic {
 	return logistic(0)
 }
 
-func (t logistic) Init(l *badstudent.Layer) (error) {
+func (t logistic) Init(l *badstudent.Layer) error {
 	if l.Size() != l.NumInputs() {
 		return errors.Errorf("Can't initialize logistic Operator")
 	}
@@ -23,7 +23,7 @@ func (t logistic) Init(l *badstudent.Layer) (error) {
 func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 	i := 0
 	for in := range l.InputIterator() {
-		values[i] = 0.5 + 0.5 * math.Tanh(0.5 * in)
+		values[i] = 0.5 + 0.5*math.Tanh(0.5*in)
 		i++
 	}
 
@@ -35,12 +35,16 @@ func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), input
 	end := start + l.InputSize(input)
 
 	for in := start; in < end; in++ {
-		add(in - start, l.Delta(in) * l.Value(in) * (1 - l.Value(in)))
+		add(in-start, l.Delta(in)*l.Value(in)*(1-l.Value(in)))
 	}
 
 	return nil
 }
 
-func (t logistic) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64) error {
+func (t logistic) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64, saveChanges bool) error {
+	return nil
+}
+
+func (t logistic) AddWeights(l *badstudent.Layer) error {
 	return nil
 }

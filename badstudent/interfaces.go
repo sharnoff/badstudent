@@ -6,7 +6,7 @@ type Operator interface {
 	// Init() will only be run once
 	//
 	// can use *Layer.Size() to get the size of the layer
-	Init(*Layer) (error)
+	Init(*Layer) error
 	// Init(l *Layer) (int, error)
 
 	// Should update the values of the layer to reflect the inputs and weights (if any)
@@ -31,9 +31,16 @@ type Operator interface {
 	// adjusts the weights of the given layer, using its deltas
 	//
 	// args: layer to adjust, an optimzier to use with the gradients,
-	// the learning rate to proivde the optimizer
-	Adjust(*Layer, Optimizer, float64) error
-	// Adjust(l *Layer, opt Optimizer, learningRate float64) error
+	// the learning rate to proivde the optimizer, whether or not the changes
+	// from Adjust() should be applied immediately or stored
+	Adjust(*Layer, Optimizer, float64, bool) error
+	// Adjust(l *Layer, opt Optimizer, learningRate float64, saveChanges bool) error
+
+	// adds any changes to weights that have been delayed
+	//
+	// may be called without any changes waiting to happen
+	AddWeights(*Layer) error
+	// AddWeights(l *Layer) error
 }
 
 type Optimizer interface {
