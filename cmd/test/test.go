@@ -79,6 +79,7 @@ func main() {
 		TrainBeforeTest: 20,
 		BatchSize:       batchSize,
 		RunCondition:    badstudent.TrainFor(maxEpochs),
+		LearningRate:    badstudent.ConstantRate(learningRate),
 		// IsCorrect:    badstudent.CorrectRound,
 		// CostFunc:     badstudent.SquaredError(false),
 		Results:         res,
@@ -86,7 +87,7 @@ func main() {
 	}
 
 	fmt.Println("Starting training...")
-	go net.Train(args, learningRate)
+	go net.Train(args)
 
 	for r := range res {
 		if r.Epoch {

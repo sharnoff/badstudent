@@ -118,11 +118,17 @@ type TrainArgs struct {
 	// should be >= 1, will perform Stochastic Gradient Descent if equal to 1
 	BatchSize int
 
-	// whether or not the network should keep training
+	// whether or not the network should keep training (will keep training if true)
 	// arguments: number of iterations over individual data, number of epochs, previous error (cost)*
 	//
-	// *will be given NaN if no recorded previous error
+	// *will be given NaN if no recorded previous error (iteration 0)
 	RunCondition func(int, int, float64) bool
+
+	// returns what the learning rate to train the network should be
+	// arguments: number of iterations over individual data, number of epochs, previous error (cost)*
+	//
+	// *will be given NaN if no recorded previous error (iteration 0)
+	LearningRate func(int, int, float64) float64
 
 	// given outputs, targets; should return whether or not the outputs are correct
 	// is not required. Defaults to CorrectRound()
@@ -153,7 +159,7 @@ type TrainArgs struct {
 var default_CostFunc CostFunction = SquaredError(false)
 var default_IsCorrect func([]float64, []float64) bool = CorrectRound 
 
-func (net *Network) Train(args TrainArgs, learningRate float64) {
+func (net *Network) Train(args TrainArgs) {
 	res := args.Results
 	errPtr := args.Err
 
@@ -192,6 +198,10 @@ func (net *Network) Train(args TrainArgs, learningRate float64) {
 			return
 		} else if args.RunCondition == nil {
 			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'RunCondition' function is nil")
+			close(res)
+			return
+		} else if args.LearningRate == nil {
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'LearningRate' function is nil")
 			close(res)
 			return
 		}
@@ -259,7 +269,7 @@ func (net *Network) Train(args TrainArgs, learningRate float64) {
 			return
 		}
 
-		cost, outs, err := net.Correct(d.Inputs, d.Outputs, learningRate, args.CostFunc, saveChanges)
+		cost, outs, err := net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, epoch, lastErr), args.CostFunc, saveChanges)
 		if err != nil {
 			*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed (on iteration %d, epoch %d)\n", iteration, epoch)
 			return

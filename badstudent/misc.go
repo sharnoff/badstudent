@@ -22,3 +22,10 @@ func TrainFor(maxEpochs int) func(int, int, float64) bool {
 		return epoch < maxEpochs
 	}
 }
+
+// returns a function that satisfies TrainArgs.LearningRate
+func ConstantRate(learningRate float64) func(int, int, float64) float64 {
+	return func(iteration, epoch int, lastErr float64) float64 {
+		return learningRate
+	}
+}
