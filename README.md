@@ -11,6 +11,7 @@ Current features:
 * custom optimization functions for correction
 * hassle-free supplying of data to train the network
 * real-time output of training status
+* custom run conditions
 
 Future features:
 * custom functions for variable learning rates

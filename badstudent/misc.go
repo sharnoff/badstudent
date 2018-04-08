@@ -15,3 +15,10 @@ func CorrectRound(outs, targets []float64) bool {
 
 	return true
 }
+
+// returns a function that satisfies TrainArgs.RunCondition
+func TrainFor(maxEpochs int) func(int, int, float64) bool {
+	return func(iteration, epoch int, lastErr float64) bool {
+		return epoch < maxEpochs
+	}
+}

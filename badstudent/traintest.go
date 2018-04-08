@@ -2,6 +2,7 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
+	"math"
 )
 
 // returns a copy of the output values of the network, given the inputs
@@ -117,11 +118,19 @@ type TrainArgs struct {
 	// should be >= 1, will perform Stochastic Gradient Descent if equal to 1
 	BatchSize int
 
+	// whether or not the network should keep training
+	// arguments: number of iterations over individual data, number of epochs, previous error (cost)*
+	//
+	// *will be given NaN if no recorded previous error
+	RunCondition func(int, int, float64) bool
+
 	// given outputs, targets; should return whether or not the outputs are correct
+	// is not required. Defaults to CorrectRound()
 	IsCorrect func([]float64, []float64) bool
 
 	// calculates the cost / error for the network on that datum
 	// used for both training and testing
+	// is not required. Defaults to SquaredError()
 	CostFunc CostFunction
 
 	Results chan struct {
@@ -141,7 +150,10 @@ type TrainArgs struct {
 	Err *error
 }
 
-func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
+var default_CostFunc CostFunction = SquaredError(false)
+var default_IsCorrect func([]float64, []float64) bool = CorrectRound 
+
+func (net *Network) Train(args TrainArgs, learningRate float64) {
 	res := args.Results
 	errPtr := args.Err
 
@@ -178,6 +190,10 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			*errPtr = errors.Errorf("Can't *Network.Train(), provided BatchSize < 1. (%d) SGD can be performed by setting BatchSize to 1", args.BatchSize)
 			close(res)
 			return
+		} else if args.RunCondition == nil {
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'RunCondition' function is nil")
+			close(res)
+			return
 		}
 	}
 
@@ -193,6 +209,8 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 
 	var iteration, epoch, epochSize int
 	var epochErr, epochPercent float64
+	var batchErr, batchPercent float64
+	lastErr := math.NaN()
 
 	var dataSrc chan struct {
 		Datum
@@ -203,7 +221,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 	saveChanges := (args.BatchSize != 1)
 
 	for {
-		if epoch >= maxEpochs {
+		if !args.RunCondition(iteration, epoch, lastErr) {
 			break
 		}
 
@@ -246,27 +264,29 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed (on iteration %d, epoch %d)\n", iteration, epoch)
 			return
 		}
+
 		epochErr += cost // will be divided when we know how big the epoch is
+		batchErr += cost / float64(args.BatchSize)
 
 		correct := args.IsCorrect(outs, d.Outputs)
 		if correct {
 			epochPercent += 100
+			batchPercent += 100 / float64(args.BatchSize)
 		}
+
+		lastErr = cost
 
 		iteration++
 		epochSize++
 
 		// if it's the end of a batch, send the information back
 		if (iteration % args.BatchSize == 0) && args.BatchSize != 1 {
-			var correctPercent float64
-			if correct {
-				correctPercent = 100
-			}
-
 			res <- struct {
 				Avg, Percent  float64
 				Epoch, IsTest bool
-			}{cost, correctPercent, false, false}
+			}{batchErr, batchPercent, false, false}
+
+			batchErr, batchPercent = 0, 0
 
 			if err := net.addWeights(); err != nil {
 				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights failed on iteration %d, epoch %d\n", iteration, epoch)
@@ -289,6 +309,44 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			epochErr, epochPercent = 0.0, 0.0
 		}
 	}
+
+	// finish up before returning
+	{
+		shouldAddWeights := false
+
+		if epochSize > 0 {
+			epochErr /= float64(epochSize)
+			epochPercent /= float64(epochSize)
+
+			res <- struct {
+				Avg, Percent  float64
+				Epoch, IsTest bool
+			}{epochErr, epochPercent, true, false}
+
+			shouldAddWeights = true
+		}
+
+		if finalBatchSize := iteration % args.BatchSize; finalBatchSize > 0 {
+			batchErr *= float64(args.BatchSize) / float64(finalBatchSize)
+			batchPercent *= float64(args.BatchSize) / float64(finalBatchSize)
+
+			res <- struct {
+				Avg, Percent  float64
+				Epoch, IsTest bool
+			}{batchErr, batchPercent, false, false}
+
+			shouldAddWeights = true
+		}
+
+		if shouldAddWeights {
+			if err := net.addWeights(); err != nil {
+				*errPtr = errors.Wrapf(err, "Failed to add weights after training network\n")
+				return
+			}
+		}
+	}
+	
+	return
 }
 
 func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
