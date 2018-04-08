@@ -79,6 +79,7 @@ func main() {
 		TestData:        testData,
 		TrainBeforeTest: 20,
 		BatchSize:       batchSize,
+		IsCorrect:       badstudent.CorrectRound,
 		CostFunc:        costfunctions.SquaredError(false),
 		Results:         res,
 		Err:             &err,
@@ -109,7 +110,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	_, _, err = net.Test(testSrc, costfunctions.SquaredError(true))
+	_, _, err = net.Test(testSrc, costfunctions.SquaredError(true), badstudent.CorrectRound)
 	if err != nil {
 		panic(err.Error())
 	}

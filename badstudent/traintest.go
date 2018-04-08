@@ -117,6 +117,9 @@ type TrainArgs struct {
 	// should be >= 1, will perform Stochastic Gradient Descent if equal to 1
 	BatchSize int
 
+	// given outputs, targets; should return whether or not the outputs are correct
+	IsCorrect func([]float64, []float64) bool
+
 	// calculates the cost / error for the network on that datum
 	// used for both training and testing
 	CostFunc CostFunction
@@ -172,7 +175,11 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			close(res)
 			return
 		} else if args.BatchSize < 1 {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), provided BatchSize < 1. (%d) SGD can be performed by setting BatchSize to 1", args.BatchSize)
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided BatchSize < 1. (%d) SGD can be performed by setting BatchSize to 1", args.BatchSize)
+			close(res)
+			return
+		} else if args.IsCorrect == nil {
+			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'IsCorrect()' function is nil")
 			close(res)
 			return
 		} else if args.CostFunc == nil {
@@ -201,7 +208,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 		}
 
 		if args.TrainBeforeTest > 0 && iteration % args.TrainBeforeTest == 0 {
-			avg, percent, err := net.Test(args.TestData, args.CostFunc)
+			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect)
 			if err != nil {
 				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d (epoch %d) failed\n", iteration, epoch)
 				return
@@ -241,7 +248,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 		}
 		epochErr += cost // will be divided when we know how big the epoch is
 
-		correct := IsCorrect(outs, d.Outputs)
+		correct := args.IsCorrect(outs, d.Outputs)
 		if correct {
 			epochPercent += 100
 		}
@@ -284,7 +291,7 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 	}
 }
 
-func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction) (float64, float64, error) {
+func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
 	dataSrc := make(chan Datum)
 	var dataSrcErr error
 	go data(dataSrc, &dataSrcErr)
@@ -313,7 +320,7 @@ func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction) (
 		}
 		avgErr += c
 
-		if IsCorrect(outs, d.Outputs) {
+		if isCorrect(outs, d.Outputs) {
 			percentCorrect += 100.0
 		}
 
