@@ -178,18 +178,18 @@ func (net *Network) Train(args TrainArgs, maxEpochs int, learningRate float64) {
 			*errPtr = errors.Errorf("Can't *Network.Train(), provided BatchSize < 1. (%d) SGD can be performed by setting BatchSize to 1", args.BatchSize)
 			close(res)
 			return
-		} else if args.IsCorrect == nil {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'IsCorrect()' function is nil")
-			close(res)
-			return
-		} else if args.CostFunc == nil {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided CostFunction is nil")
-			close(res)
-			return
 		}
 	}
 
 	defer close(res)
+
+	if args.IsCorrect == nil {
+		args.IsCorrect = CorrectRound
+	}
+
+	if args.CostFunc == nil {
+		args.CostFunc = SquaredError(false)
+	} 
 
 	var iteration, epoch, epochSize int
 	var epochErr, epochPercent float64

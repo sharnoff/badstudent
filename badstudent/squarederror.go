@@ -1,4 +1,4 @@
-package costfunctions
+package badstudent
 
 import (
 	"fmt"

@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/sharnoff/smartlearning/badstudent"
-	"github.com/sharnoff/smartlearning/badstudent/costfunctions"
 	"github.com/sharnoff/smartlearning/badstudent/operators"
 	"github.com/sharnoff/smartlearning/badstudent/optimizers"
 
@@ -79,8 +78,8 @@ func main() {
 		TestData:        testData,
 		TrainBeforeTest: 20,
 		BatchSize:       batchSize,
-		IsCorrect:       badstudent.CorrectRound,
-		CostFunc:        costfunctions.SquaredError(false),
+		// IsCorrect:       badstudent.CorrectRound,
+		// CostFunc:        badstudent.SquaredError(false),
 		Results:         res,
 		Err:             &err,
 	}
@@ -110,7 +109,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	_, _, err = net.Test(testSrc, costfunctions.SquaredError(true), badstudent.CorrectRound)
+	_, _, err = net.Test(testSrc, badstudent.SquaredError(true), badstudent.CorrectRound)
 	if err != nil {
 		panic(err.Error())
 	}
