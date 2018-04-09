@@ -1,4 +1,4 @@
-# smartlearning
+# badstudent
 
 This is currently in progress -- there will be large API changes in the near future.
 Once the API is stable, documentation will be added outside of the codebase.

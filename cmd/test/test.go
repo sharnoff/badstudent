@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/sharnoff/smartlearning/badstudent"
-	"github.com/sharnoff/smartlearning/badstudent/operators"
-	"github.com/sharnoff/smartlearning/badstudent/optimizers"
+	"github.com/sharnoff/badstudent"
+	"github.com/sharnoff/badstudent/operators"
+	"github.com/sharnoff/badstudent/optimizers"
 
 	"fmt"
 )

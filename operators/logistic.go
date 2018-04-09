@@ -1,8 +1,8 @@
 package operators
 
 import (
+	"github.com/sharnoff/badstudent"
 	"github.com/pkg/errors"
-	"github.com/sharnoff/smartlearning/badstudent"
 	"math"
 )
 
@@ -14,7 +14,7 @@ func Logistic() logistic {
 
 func (t logistic) Init(l *badstudent.Layer) error {
 	if l.Size() != l.NumInputs() {
-		return errors.Errorf("Can't initialize logistic Operator")
+		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs")
 	}
 
 	return nil
@@ -35,7 +35,8 @@ func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), input
 	end := start + l.InputSize(input)
 
 	for in := start; in < end; in++ {
-		add(in-start, l.Delta(in)*l.Value(in)*(1-l.Value(in)))
+		// derivative is: l.Value(in) * (1 - l.Value(in))
+		add(in - start, l.Delta(in) * l.Value(in) * (1 - l.Value(in)))
 	}
 
 	return nil

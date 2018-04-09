@@ -2,7 +2,7 @@ package operators
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sharnoff/smartlearning/badstudent"
+	"github.com/sharnoff/badstudent"
 	"math/rand"
 )
 
