@@ -8,8 +8,7 @@ import (
 
 type Layer struct {
 	// The name that will be used to print this layer.
-	// Not used for unique identification of any kind,
-	// and may be nil
+	// Used for unique identification, can be empty
 	Name string
 
 	// used for validation during setup

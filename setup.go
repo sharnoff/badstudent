@@ -9,14 +9,22 @@ type Network struct {
 	inLayers  []*Layer
 	outLayers []*Layer
 
+	all map[string]*Layer
+
 	inputs  []float64
 	outputs []float64
 }
 
 // name, optimizer can be nil
 func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Optimizer, inputs ...*Layer) (*Layer, error) {
+	if net.all == nil {
+		net.all = make(map[string]*Layer)
+	}
+
 	if size < 1 {
 		return nil, errors.Errorf("Can't add layer to network, layer must have >= 1 values (%d)", size)
+	} else if net.all[name] != nil {
+		return nil, errors.Errorf("Can't add layer to network, name \"%s\" is already taken", name)
 	}
 
 	l := new(Layer)
@@ -42,7 +50,7 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Opt
 			l.numInputs[i] = totalInputs
 
 			if in.hostNetwork != net {
-				return nil, errors.Errorf("Can't add layer to network, input %v (#%d) does not belong to the same *Network", in, i)
+				return nil, errors.Errorf("Fatal error: Can't add layer to network, input %v (#%d) does not belong to the same *Network", in, i)
 			}
 
 			in.outputs = append(in.outputs, l)
@@ -53,8 +61,10 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Opt
 	l.deltas = make([]float64, size)
 
 	if err := typ.Init(l); err != nil {
-		return nil, errors.Wrapf(err, "Couldn't add layer %v to network, initializing Operator failed\n", l)
+		return nil, errors.Wrapf(err, "Fatal error: Couldn't add layer %v to network, initializing Operator failed\n", l)
 	}
+
+	net.all[name] = l
 
 	return l, nil
 }
