@@ -3,6 +3,7 @@ package badstudent
 import (
 	"github.com/pkg/errors"
 	"math"
+	"fmt"
 )
 
 // returns a copy of the output values of the network, given the inputs
@@ -23,9 +24,9 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 		}
 	}
 
-	dupe := make([]float64, len(net.outputs))
-	copy(dupe, net.outputs)
-	return dupe, nil
+	clone := make([]float64, len(net.outputs))
+	copy(clone, net.outputs)
+	return clone, nil
 }
 
 // expects that the given CostFunc will not be nil
@@ -80,55 +81,73 @@ func (d Datum) fits(net *Network) bool {
 	return len(d.Inputs) == len(net.inputs) && len(d.Outputs) == len(net.outputs)
 }
 
+type Result struct {
+	Iteration int
+
+	// average cost, from CostFunc
+	Avg float64
+
+	// the percent correct, as per IsCorrect
+	Percent float64
+	
+	// the result is either from a test or a status update
+	IsTest bool
+}
+
 type TrainArgs struct {
-	// sends requested amount of data over the provided channel
-	// args:
-	//	batchSize int
-	//		the amount of data that *Network.Train() will expect to receive
-	//	iteration int
-	// 		a counter for the number of data that have already been used.
-	//		This does not work with variable dataset sizes
-	//	dataSrc chan struct{Datum, bool}
-	//		a channel to send data on
-	//		unbuffered, sends block until recieved by *Network.Train()
-	//		Epoch is only true if this is the last Datum in the set
-	//	err *error
-	//		A place for the function to return error4
-	Data func(int, int, chan struct {
-		Datum
-		Epoch bool
-	}, *error)
+	// sends a piece of data for each 'true' it is sent.
+	// both channels will be pre-made with no buffers
+	//
+	// the sending of a 'false' indicates that that
+	// there will be no more requests for data
+	//
+	// if there is an error, the channel of Data should be closed
+	// else, it will not be registered
+	//
+	// should set the provided *bool - 'moreData' - to false if there is no more data
+	// otherwise, it may deadlock 
+	Data func(chan bool, chan Datum, *bool, *error)
 
-	// sends the testing data (dev set) over the channel
-	// can only be nil if TrainBeforeTest == 0
-	// args:
-	//	dataSrc chan Datum
-	//		a channel to send the testing data on
-	//		unbuffered, sends block until recieved by *Network.Test()
-	//	err *error
-	//		A place for the function to return error
-	TestData func(chan Datum, *error)
+	// effectively identical to 'Data'
+	// will only send 'false' if there has been an error
+	//
+	// the channel of data should be closed once there
+	// are no more data to test
+	TestData func(chan bool, chan Datum, *bool, *error)
+	
+	// the number of testing data the network should test on before that iteration
+	// if equal to nil, will never test (allowing TestData to be nil)
+	//
+	// the results of testing are sent back through Results,
+	// with IsTest = true
+	ShouldTest func(int) int
 
-	// the number of training data that *Network.Train() will optimize for before testing
-	// must be >= 0. If equal to 0, it will never test (allowing TestData to be nil)
-	TrainBeforeTest int
+	// whether or not to send back training status
+	// if equal to nil, will never send back data
+	//
+	// sends before training on that iteration,
+	// will not send at iteration 0 (because there has been no training)
+	SendStatus func(int) bool
 
 	// the number of training samples to be run before applying the changes to weights
-	// also determines the number of training samples requested from Data()
-	// should be >= 1, will perform Stochastic Gradient Descent if equal to 1
-	BatchSize int
+	// also determines the number of training samples requested from
+	//
+	// defaults to a batch size of 1 (no changes saved)
+	//
+	// returns: whether or not the next iteration is the start of a batch; whether or not the network should delay changes
+	Batch func(int) (bool, bool)
 
 	// whether or not the network should keep training (will keep training if true)
-	// arguments: number of iterations over individual data, number of epochs, previous error (cost)*
+	// arguments: number of iterations over individual data, previous error (cost)*
 	//
 	// *will be given NaN if no recorded previous error (iteration 0)
-	RunCondition func(int, int, float64) bool
+	RunCondition func(int, float64) bool
 
 	// returns what the learning rate to train the network should be
-	// arguments: number of iterations over individual data, number of epochs, previous error (cost)*
+	// arguments: number of iterations over individual data, previous error (cost)*
 	//
-	// *will be given NaN if no recorded previous error (iteration 0)
-	LearningRate func(int, int, float64) float64
+	// *will be given NaN if no recorded previous error (guaranteed on iteration 0)
+	LearningRate func(int, float64) float64
 
 	// given outputs, targets; should return whether or not the outputs are correct
 	// is not required. Defaults to CorrectRound()
@@ -139,324 +158,330 @@ type TrainArgs struct {
 	// is not required. Defaults to SquaredError()
 	CostFunc CostFunction
 
-	Results chan struct {
-		// the average error/cost from the past batch/epoch/test
-		Avg float64
+	// where the results of testing and status checking are sent
+	// can be provided as nil
+	//
+	// Train() will return error if 'Results' is nil and
+	// 'SendStatus' or 'ShouldTest' return true
+	Results chan Result
 
-		// the percent correct from the past batch/epoch/test,
-		// as determined by IsCorrect()
-		Percent float64
-
-		// Epoch is true if the result is for the entire epoch
-		// IsTest is true if the result is from test data
-		// If neither is true, the result is from a (mini-)batch
-		Epoch, IsTest bool
-	}
-
+	// Err should not be nil, and *Err should be nil
+	// this is where (how) any error encoutered while training
+	// will be returned
 	Err *error
 }
 
-var default_CostFunc CostFunction = SquaredError(false)
-var default_IsCorrect func([]float64, []float64) bool = CorrectRound 
+var default_CostFunc = SquaredError(false)
+var default_IsCorrect = CorrectRound
+var default_Batch = func(iteration int) (bool, bool) { return true, false }
 
 func (net *Network) Train(args TrainArgs) {
-	res := args.Results
-	errPtr := args.Err
+
+	canSend := true
+	if args.Results != nil {
+		defer close(args.Results)
+	}
 
 	// error checking
 	{
-		if errPtr == nil {
-			if res != nil {
-				close(res)
-			}
+		if args.Err == nil {
 			return
-		} else if *errPtr != nil {
-			if res != nil {
-				close(res)
-			}
-			return
-		} else if res == nil {
-			if errPtr != nil && *errPtr == nil {
-				*errPtr = errors.Errorf("Can't *Network.Train(), provided Results channel is nil")
-			}
+		} else if *args.Err != nil {
 			return
 		} else if args.Data == nil {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided Data function is nil")
-			close(res)
-			return
-		} else if args.TestData == nil && args.TrainBeforeTest != 0 {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided TestData function is nil")
-			close(res)
-			return
-		} else if args.TrainBeforeTest < 0 {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'TrainBeforeTest' < 0 (%d)", args.TrainBeforeTest)
-			close(res)
-			return
-		} else if args.BatchSize < 1 {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided BatchSize < 1. (%d) SGD can be performed by setting BatchSize to 1", args.BatchSize)
-			close(res)
+			*args.Err = errors.Errorf("Can't *Network.Train(), no provided data (args.Train == nil)")
 			return
 		} else if args.RunCondition == nil {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'RunCondition' function is nil")
-			close(res)
+			*args.Err = errors.Errorf("Can't *Network.Train(), no provided run condition (args.RunCondition == nil)")
 			return
 		} else if args.LearningRate == nil {
-			*errPtr = errors.Errorf("Can't *Network.Train(), provided 'LearningRate' function is nil")
-			close(res)
-			return
+			*args.Err = errors.Errorf("Can't *Network.Train(), no provided learning rate (args.LearningRate == nil)")
 		}
 	}
 
-	defer close(res)
-
-	if args.IsCorrect == nil {
-		args.IsCorrect = CorrectRound
-	}
-
-	if args.CostFunc == nil {
-		args.CostFunc = SquaredError(false)
-	} 
-
-	var iteration, epoch, epochSize int
-	var epochErr, epochPercent float64
-	var batchErr, batchPercent float64
-	lastErr := math.NaN()
-
-	var dataSrc chan struct {
-		Datum
-		Epoch bool
-	}
-	var dataSrcErr error
-
-	saveChanges := (args.BatchSize != 1)
-
-	for {
-		if !args.RunCondition(iteration, epoch, lastErr) {
-			break
+	// setting defaults
+	{
+		if args.CostFunc == nil {
+			args.CostFunc = default_CostFunc
 		}
 
-		if args.TrainBeforeTest > 0 && iteration % args.TrainBeforeTest == 0 {
-			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect)
-			if err != nil {
-				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d (epoch %d) failed\n", iteration, epoch)
+		if args.IsCorrect == nil {
+			args.IsCorrect = default_IsCorrect
+		}
+
+		if args.Batch == nil {
+			args.Batch = default_Batch
+		}
+	}
+
+	var iteration int
+	var runningAvgCost, runningPercent float64
+	var statusSize int // the amount of data that the status update reports on
+	var lastCost float64 = math.NaN()
+
+	var fetchData chan bool = make(chan bool)
+	var dataSrc chan Datum = make(chan Datum)
+	var moreData bool = true
+	var dataErr error
+
+	go args.Data(fetchData, dataSrc, &moreData, &dataErr)
+
+	// whether or not Data() has returned - dataSrc is closed or
+	// fetchData has already sent 'false'
+	var finishedSafely bool
+	defer func() {
+		if !finishedSafely {
+			fetchData <- false
+			close(fetchData)
+		}
+	}()
+
+	// declared here for the sake of efficiency.
+	// does not persist from one iteration to the next
+	var saveChanges bool
+	var newBatch bool
+
+	var changesDelayed bool
+
+	for args.RunCondition(iteration, lastCost) {
+
+		if args.SendStatus(iteration) && iteration != 0 {
+			if !canSend {
+				*args.Err = errors.Errorf("Can't *Network.Train(), tried to send status when can't send results (args.Results == nil) (iteration = %d)", iteration)
 				return
 			}
 
-			res <- struct {
-				Avg, Percent  float64
-				Epoch, IsTest bool
-			}{avg, percent, false, true}
+			runningPercent /= float64(statusSize)
+			runningAvgCost /= float64(statusSize)
+
+			args.Results <- Result{iteration, runningAvgCost, runningPercent, false}
+
+			runningPercent, runningAvgCost = 0.0, 0.0
+			statusSize = 0
 		}
 
-		if iteration % args.BatchSize == 0 {
-			dataSrc = make(chan struct {
-				Datum
-				Epoch bool
-			})
+		if amount := args.ShouldTest(iteration); amount != 0 {
+			if !canSend {
+				*args.Err = errors.Errorf("Can't *Network.Train(), tried to test when can't send results (args.Results == nil) (iteration = %d)", iteration)
+				return
+			}
 
-			go args.Data(args.BatchSize, iteration, dataSrc, &dataSrcErr)
+			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect, amount)
+			if err != nil {
+				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d failed\n", iteration)
+				return
+			}
+
+			args.Results <- Result{iteration, avg, percent, true}
 		}
 
-		d := <-dataSrc
-		if dataSrcErr != nil {
-			*errPtr = errors.Wrapf(dataSrcErr, "Couldn't *Network.Train(), fetching data on iteration %d failed\n", iteration)
-			return
-		} else if d.Inputs == nil && d.Outputs == nil && d.Epoch == false { // check to see if the struct has values that aren't initialized
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), received empty struct from fetching data on iteration %d\n", iteration)
-			return
-		} else if !d.fits(net) {
-			*errPtr = errors.Errorf("Couldn't *Network.Train(), Datum at iteration %d (epoch %d) had improper dimensions for network (lengths: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - %d\n", iteration, epoch, len(net.inLayers[0].values), len(d.Inputs), len(net.outLayers[0].values), len(d.Outputs))
-			return
+		if newBatch, saveChanges = args.Batch(iteration); newBatch && iteration != 0 {
+			if !changesDelayed {
+				if err := net.addWeights(); err != nil {
+					*args.Err = errors.Wrapf(err, "Can't *Network.Train(), adding weights from start of new batch on iteration %d failed\n", iteration)
+					return
+				}
+
+				changesDelayed = false
+			}
 		}
 
-		cost, outs, err := net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, epoch, lastErr), args.CostFunc, saveChanges)
-		if err != nil {
-			*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed (on iteration %d, epoch %d)\n", iteration, epoch)
-			return
+		if saveChanges {
+			changesDelayed = true
 		}
 
-		epochErr += cost // will be divided when we know how big the epoch is
-		batchErr += cost / float64(args.BatchSize)
+		// get data and correct network weights
+		var cost float64
+		var outs []float64
+		var correct bool
+		{
+			if !moreData {
+				fmt.Println("no more data after iteration", iteration)
+				finishedSafely = true
+				break
+			}
 
-		correct := args.IsCorrect(outs, d.Outputs)
-		if correct {
-			epochPercent += 100
-			batchPercent += 100 / float64(args.BatchSize)
+			fetchData <- true
+
+			d, ok := <-dataSrc
+			if dataErr != nil {
+				*args.Err = errors.Wrapf(dataErr, "Can't *Network.Train(), fetching data on iteration %d failed\n", iteration)
+				finishedSafely = true
+				return
+			} else if !ok {
+				*args.Err = errors.Errorf("Can't *Network.Train(), data source channel closed without error on iteration %d\n", iteration)
+				finishedSafely = true
+				return
+			}
+
+			if !d.fits(net) {
+				*args.Err = errors.Errorf("Can't *Network.Train(), provided Datum on iteration %d does not fit network", iteration)
+			}
+
+			var err error
+			cost, outs, err = net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, lastCost), args.CostFunc, saveChanges)
+			if err != nil {
+				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed on iteration %d\n", iteration)
+				return
+			}
+
+
+			correct = args.IsCorrect(outs, d.Outputs)
 		}
 
-		lastErr = cost
+		{
+			if correct {
+				runningPercent += 100
+			}
+			runningAvgCost += cost
+		}
 
 		iteration++
-		epochSize++
-
-		// if it's the end of a batch, send the information back
-		if (iteration % args.BatchSize == 0) && args.BatchSize != 1 {
-			res <- struct {
-				Avg, Percent  float64
-				Epoch, IsTest bool
-			}{batchErr, batchPercent, false, false}
-
-			batchErr, batchPercent = 0, 0
-
-			if err := net.addWeights(); err != nil {
-				*errPtr = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights failed on iteration %d, epoch %d\n", iteration, epoch)
-				return
-			}
-		}
-
-		// if it's the end of the epoch, send the information back
-		if d.Epoch {
-			epochErr /= float64(epochSize)
-			epochPercent /= float64(epochSize)
-			epochSize = 0
-			epoch++
-
-			res <- struct {
-				Avg, Percent  float64
-				Epoch, IsTest bool
-			}{epochErr, epochPercent, true, false}
-
-			epochErr, epochPercent = 0.0, 0.0
-		}
+		statusSize++
+		lastCost = cost
 	}
 
 	// finish up before returning
 	{
-		shouldAddWeights := false
-
-		if epochSize > 0 {
-			epochErr /= float64(epochSize)
-			epochPercent /= float64(epochSize)
-
-			res <- struct {
-				Avg, Percent  float64
-				Epoch, IsTest bool
-			}{epochErr, epochPercent, true, false}
-
-			shouldAddWeights = true
-		}
-
-		if finalBatchSize := iteration % args.BatchSize; finalBatchSize > 0 {
-			batchErr *= float64(args.BatchSize) / float64(finalBatchSize)
-			batchPercent *= float64(args.BatchSize) / float64(finalBatchSize)
-
-			res <- struct {
-				Avg, Percent  float64
-				Epoch, IsTest bool
-			}{batchErr, batchPercent, false, false}
-
-			shouldAddWeights = true
-		}
-
-		if shouldAddWeights {
+		if changesDelayed {
 			if err := net.addWeights(); err != nil {
-				*errPtr = errors.Wrapf(err, "Failed to add weights after training network\n")
+				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights after finishing training (iteration %d) failed\n", iteration)
 				return
 			}
+		}
+
+		if args.SendStatus(iteration) && iteration != 0 {
+			if !canSend {
+				*args.Err = errors.Errorf("Can't *Network.Train(), tried to send status after training when can't send results (args.Results == nil) (iteration = %d)", iteration)
+				return
+			}
+
+			runningPercent /= float64(statusSize)
+			runningAvgCost /= float64(statusSize)
+
+			args.Results <- Result{iteration, runningAvgCost, runningPercent, false}
+		}
+
+		if amount := args.ShouldTest(iteration); amount != 0 {
+			if !canSend {
+				*args.Err = errors.Errorf("Can't *Network.Train(), tried to test after training when can't send results (args.Results == nil) (iteration = %d)", iteration)
+				return
+			}
+
+			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect, amount)
+			if err != nil {
+				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), testing after training (iteration %d) failed\n", iteration)
+				return
+			}
+
+			args.Results <- Result{iteration, avg, percent, true}
 		}
 	}
 	
 	return
 }
 
-func (net *Network) Test(data func(chan Datum, *error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
-	dataSrc := make(chan Datum)
-	var dataSrcErr error
-	go data(dataSrc, &dataSrcErr)
+// 'amount' is the quantity of test data that should be requested
+// the responsibility is on Test() to send 'false' to data, not data to close its channel
+// returns: average cost, percent correct (out of 100)
+func (net *Network) Test(data func(chan bool, chan Datum, *bool, *error), cf CostFunction, isCorrect func([]float64, []float64) bool, amount int) (float64, float64, error) {
 
-	i := 0
-	var avgErr, percentCorrect float64
-	for d := range dataSrc {
-		if !d.fits(net) {
-			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given Datum had improper dimensions (lenghs: net inputs - %d, d.Inputs - %d, net outputs - %d, d.Outputs - d", len(net.inLayers[0].values), len(d.Inputs), len(net.outLayers[0].values), len(d.Outputs))
+	var fetchData chan bool = make(chan bool)
+	var dataSrc chan Datum = make(chan Datum)
+	var dataErr error
+	var moreData bool = true
+
+	go data(fetchData, dataSrc, &moreData, &dataErr)
+
+	var finishedSafely bool
+	defer func() {
+		if !finishedSafely {
+			fetchData <- false
+			close(fetchData)
+		}
+	}()
+
+	var avgCost, percent float64
+
+	i := 0 // used for reporting errors
+	for {
+		if !moreData {
+			finishedSafely = true
+			break
 		}
 
-		if dataSrcErr != nil {
-			return 0, 0, errors.Wrapf(dataSrcErr, "Couldn't *Network.Test(), failed to get data for test iteration %d\n", i)
-		} else if d.Inputs == nil && d.Outputs == nil {
-			return 0, 0, errors.Errorf("Couldn't *Network.Test(), given datum struct has not been initialized for test iteration %d", i)
+		fetchData <- true
+
+		d, ok := <-dataSrc
+		if dataErr != nil {
+			finishedSafely = true
+			return 0, 0, errors.Wrapf(dataErr, "Can't *Network.Test(), fetching data for test iteration %d failed\n", i)
+		} else if !ok {
+			finishedSafely = true
+			return 0, 0, errors.Errorf("Can't *Network.Test(), data source channel closed without error on test iteration %d\n", i)
+		}
+
+		if !d.fits(net) {
+			return 0, 0, errors.Errorf("Can't *Network.Test(), provided Datum on test iteration %d does not fit network", i)
 		}
 
 		outs, err := net.GetOutputs(d.Inputs)
 		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), getting outputs for test iteration %d failed\n", i)
+			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), could not get outputs of network on test iteraiton %d\n", i)
 		}
 
-		c, err := costFunc.Cost(outs, d.Outputs)
+		c, err := cf.Cost(outs, d.Outputs)
 		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), cost function failed on test iteration %d\n", i)
+			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), could not calculate cost of outputs on test iteration %d\n", i)
 		}
-		avgErr += c
+		avgCost += c
 
 		if isCorrect(outs, d.Outputs) {
-			percentCorrect += 100.0
+			percent += 100.0
 		}
 
 		i++
 	}
 
-	avgErr /= float64(i)
-	percentCorrect /= float64(i)
+	avgCost /= float64(i)
+	percent /= float64(i)
 
-	return avgErr, percentCorrect, nil
+	return avgCost, percent, nil
 }
 
-// returns a function that works to satisfy TrainArgs.Data
+// returns a function that satisfies TrainArgs.Data or TrainArgs.TestData
 // data[n] should have length 2
-// data[n][0] should be inputs, data[n][1] should be outputs
-func TrainCh(data [][][]float64) (func(int, int, chan struct {
-	Datum
-	Epoch bool
-}, *error), error) {
+// data[n][0] is inputs, data[n][1] is outputs
+//
+// 'loop' should be true for training samples, false for testing
+func DataCh(data [][][]float64, loop bool) (func(chan bool, chan Datum, *bool, *error), error) {
 
-	// check that all of the data are okay
+	// check that all of the data are okay (but does not check if they fit the network)
 	for i := range data {
 		if len(data[i]) != 2 {
-			return nil, errors.Errorf("Can't get function to provide to *Network.Train(), len(data[%d]) != 2 (%d)", i, len(data[i]))
+			return nil, errors.Errorf("Can't get DataCh, len(data[%d]) != 2 (%d)", i, len(data[i]))
 		}
 	}
 
-	return func(amount, start int, ch chan struct {
-		Datum
-		Epoch bool
-	}, err *error) {
+	return func(request chan bool, dataSrc chan Datum, moreData *bool, err *error) {
+		defer close(dataSrc)
 
-		for i := 0; i < amount; i++ {
-			index := (start + i) % len(data)
+		for {
+			for i := range data {
+				req := <- request
+				if !req {
+					return
+				}
 
-			var epoch bool
-			if index == len(data)-1 {
-				epoch = true
+				dataSrc <- Datum{data[i][0], data[i][1]}
 			}
 
-			ch <- struct {
-				Datum
-				Epoch bool
-			}{Datum{data[index][0], data[index][1]}, epoch}
+			if !loop {
+				*moreData = false
+				break
+			}
 		}
 
-		close(ch)
-		return
-	}, nil
-}
-
-// works to satisfy TrainArgs.TestData | *Network.Test(.data)
-// data[n] should have length 2
-// data[n][0] should be inputs, data[n][1] should be outputs
-func TestCh(data [][][]float64) (func(chan Datum, *error), error) {
-	// check that all of the data are okay
-	for i := range data {
-		if len(data[i]) != 2 {
-			return nil, errors.Errorf("Can't get function to provide to *Network.Test(), len(data[%d]) != 2 (%d)", i, len(data[i]))
-		}
-	}
-
-	return func(ch chan Datum, err *error) {
-		for _, d := range data {
-			ch <- Datum{d[0], d[1]}
-		}
-
-		close(ch)
 		return
 	}, nil
 }
