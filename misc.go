@@ -54,22 +54,56 @@ func CorrectHighest(outs, targets []float64) bool {
 	return o.indexes[0] == t.indexes[0]
 }
 
-func TrainForIterations(maxIterations int) func(int, int, float64) bool {
-	return func(iteration, epoch int, lastErr float64) bool {
+func TrainUntil(maxIterations int) func(int, float64) bool {
+	return func(iteration int, lastErr float64) bool {
 		return iteration < maxIterations
 	}
 }
 
-// returns a function that satisfies TrainArgs.RunCondition
-func TrainForEpochs(maxEpochs int) func(int, int, float64) bool {
-	return func(iteration, epoch int, lastErr float64) bool {
-		return epoch < maxEpochs
+// returns a function that satisfies TrainArgs.LearningRate
+func ConstantRate(learningRate float64) func(int, float64) float64 {
+	return func(iteration int, lastErr float64) float64 {
+		return learningRate
 	}
 }
 
-// returns a function that satisfies TrainArgs.LearningRate
-func ConstantRate(learningRate float64) func(int, int, float64) float64 {
-	return func(iteration, epoch int, lastErr float64) float64 {
-		return learningRate
+// returns a function that satisfies TrainArgs.SendStatus
+// 'frequency' is in units of iterations
+//
+// this function is self-explanatory from viewing the source
+func Every(frequency int) func(int) bool {
+	return func(iteration int) bool {
+		return iteration % frequency == 0
+	}
+}
+
+// returns a function that satisfies TrainArgs.Batch
+// 'frequency' is in units of iterations
+//
+// this function is self-explanatory from viewing the source
+func BatchEvery(frequency int) func(int) (bool, bool) {
+	if frequency == 1 {
+		return func(iteration int) (bool, bool) {
+			return true, false
+		}
+	} else {
+		return func(iteration int) (bool, bool) {
+			return (iteration % frequency == 0), false
+		}
+	}
+}
+
+// returns a function that satisfies TrainArgs.ShouldTest
+// 'frequency' is in units of iterations
+// 'amount' is the quantity of test data that should be tested on
+// 
+// this function is self-explanatory from viewing the source
+func TestEvery(frequency, amount int) func(int) int {
+	return func(iteration int) int {
+		if iteration % frequency == 0 {
+			return amount
+		}
+
+		return 0
 	}
 }
