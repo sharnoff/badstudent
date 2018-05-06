@@ -88,7 +88,7 @@ func BatchEvery(frequency int) func(int) (bool, bool) {
 		}
 	} else {
 		return func(iteration int) (bool, bool) {
-			return (iteration % frequency == 0), false
+			return (iteration % frequency == 0), true
 		}
 	}
 }
