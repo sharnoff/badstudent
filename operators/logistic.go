@@ -1,8 +1,8 @@
 package operators
 
 import (
-	"github.com/sharnoff/badstudent"
 	"github.com/pkg/errors"
+	"github.com/sharnoff/badstudent"
 	"math"
 	"runtime"
 )
@@ -27,7 +27,7 @@ func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 	inputs := l.CopyOfInputs()
 
 	f := func(i int) {
-		values[i] = 0.5 + 0.5 * math.Tanh(0.5 * inputs[i])
+		values[i] = 0.5 + 0.5*math.Tanh(0.5*inputs[i])
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
@@ -41,7 +41,7 @@ func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
 	f := func(i int) {
-		add(i - start, l.Delta(i) * l.Value(i) * (1 - l.Value(i)))
+		add(i-start, l.Delta(i)*l.Value(i)*(1-l.Value(i)))
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier

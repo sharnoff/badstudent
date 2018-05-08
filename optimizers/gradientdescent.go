@@ -19,7 +19,7 @@ func (g gradientdescent) Run(l *badstudent.Layer, size int, grad func(int) float
 	opsPerThread := runtime.NumCPU()
 
 	f := func(i int) {
-		add(i, -1 * learningRate * grad(i))
+		add(i, -1*learningRate*grad(i))
 	}
 
 	badstudent.MultiThread(0, size, f, opsPerThread, threadsPerCPU)

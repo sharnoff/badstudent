@@ -8,8 +8,8 @@ import (
 // should be run sequentially, not in a separate thread
 // mainly for use by operators or optimizers in their mass calculations
 // f is the function that should be run multithreaded
-func MultiThread(start, end int, f func (int), opsPerThread, threadsPerCPU int) {
-	
+func MultiThread(start, end int, f func(int), opsPerThread, threadsPerCPU int) {
+
 	numThreads := runtime.NumCPU() * threadsPerCPU
 	index := start
 	var indexMux sync.Mutex
@@ -47,7 +47,7 @@ func MultiThread(start, end int, f func (int), opsPerThread, threadsPerCPU int) 
 
 	numFinished := 0
 	for numFinished < numThreads {
-		<- done
+		<-done
 		numFinished++
 	}
 

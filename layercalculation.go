@@ -7,12 +7,12 @@ import (
 type status_ int8
 
 const (
-	initialized status_ = iota // 0
-	checkOuts   status_ = iota // 1
-	changed     status_ = iota // 2
-	evaluated   status_ = iota // 3
-	deltas      status_ = iota // 4
-	adjusted    status_ = iota // 5
+	initialized  status_ = iota // 0
+	checkOuts    status_ = iota // 1
+	changed      status_ = iota // 2
+	evaluated    status_ = iota // 3
+	deltas       status_ = iota // 4
+	adjusted     status_ = iota // 5
 	weightsAdded status_ = iota // 6
 )
 

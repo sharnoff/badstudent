@@ -95,15 +95,15 @@ func main() {
 		LearningRate: badstudent.ConstantRate(learningRate),
 		// IsCorrect: badstudent.CorrectRound,
 		// CostFunc:  badstudent.SquaredError(false),
-		Results:      res,
-		Err:          &err,
+		Results: res,
+		Err:     &err,
 	}
 
 	fmt.Println("Starting training...")
 	{
 		go net.Train(args)
 		fmt.Println("Iteration, Status Cost, Status Percent, Test Cost, Test Percent")
-		
+
 		// statusCost, statusPercent, testCost, testPercent
 		results := make([]float64, 4)
 		previousIteration := -1

@@ -13,18 +13,18 @@ import (
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/optimizers"
 
-	"github.com/pkg/errors"
 	"fmt"
+	"github.com/pkg/errors"
 
-	"os"
 	"bufio"
+	"os"
 	"strconv"
 	"strings"
 )
 
 const (
-	imgSize    int = 784 // 28x28
-	numOptions int = 10  // 0->9
+	imgSize    int = 784   // 28x28
+	numOptions int = 10    // 0->9
 	testSize   int = 10000 // 10 000
 )
 
@@ -77,7 +77,7 @@ func data(fileName string) ([][][]uint8, error) {
 	var data [][][]uint8
 
 	sc := bufio.NewScanner(f)
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		if !sc.Scan() {
 			break
 		}
@@ -108,8 +108,8 @@ func dataCh(data [][][]uint8, loop bool) func(chan bool, chan badstudent.Datum, 
 
 		for {
 			for _, d := range data {
-				req := <- request
-				
+				req := <-request
+
 				if req == false {
 					return
 				}
@@ -205,7 +205,7 @@ func main() {
 		testSrc = dataCh(testData, false)
 	}
 	// fmt.Println("Done!")
-	
+
 	var res chan badstudent.Result = make(chan badstudent.Result)
 	var err error
 
@@ -228,7 +228,7 @@ func main() {
 		go net.Train(args)
 
 		fmt.Println("Iteration, Train Cost, Train %, Test Cost, Test %")
-		
+
 		// statusCost, statusPercent, testCost, testPercent
 		results := make([]float64, 4)
 		previousIteration := -1

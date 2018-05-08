@@ -9,7 +9,7 @@ import (
 func CorrectRound(outs, targets []float64) bool {
 	for i := range outs {
 		// rounds to 0 if a number is < 0.5, 1 if > 0.5. Tanh reduces the value to (0, 1)
-		if math.Round(0.5 * (1 + math.Tanh(outs[i] - 0.5))) != targets[i] {
+		if math.Round(0.5*(1+math.Tanh(outs[i]-0.5))) != targets[i] {
 			return false
 		}
 	}
@@ -19,7 +19,7 @@ func CorrectRound(outs, targets []float64) bool {
 
 // for use in CorrectHighest()
 type sortable struct {
-	values []float64
+	values  []float64
 	indexes []int
 }
 
@@ -73,7 +73,7 @@ func ConstantRate(learningRate float64) func(int, float64) float64 {
 // this function is self-explanatory from viewing the source
 func Every(frequency int) func(int) bool {
 	return func(iteration int) bool {
-		return iteration % frequency == 0
+		return iteration%frequency == 0
 	}
 }
 
@@ -88,7 +88,7 @@ func BatchEvery(frequency int) func(int) (bool, bool) {
 		}
 	} else {
 		return func(iteration int) (bool, bool) {
-			return (iteration % frequency == 0), true
+			return (iteration%frequency == 0), true
 		}
 	}
 }
@@ -96,11 +96,11 @@ func BatchEvery(frequency int) func(int) (bool, bool) {
 // returns a function that satisfies TrainArgs.ShouldTest
 // 'frequency' is in units of iterations
 // 'amount' is the quantity of test data that should be tested on
-// 
+//
 // this function is self-explanatory from viewing the source
 func TestEvery(frequency, amount int) func(int) int {
 	return func(iteration int) int {
-		if iteration % frequency == 0 {
+		if iteration%frequency == 0 {
 			return amount
 		}
 

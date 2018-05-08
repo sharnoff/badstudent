@@ -41,7 +41,7 @@ func (n *neurons) Init(l *badstudent.Layer) error {
 }
 
 func (n *neurons) Evaluate(l *badstudent.Layer, values []float64) error {
-	
+
 	inputs := l.CopyOfInputs()
 	calculateValue := func(i int) {
 		var sum float64
@@ -77,7 +77,7 @@ func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 			sum += l.Delta(v) * n.weights[v][i]
 		}
 
-		add(i - start, sum)
+		add(i-start, sum)
 	}
 
 	opsPerThread, threadsPerCPU := 1, 1

@@ -89,7 +89,7 @@ type Result struct {
 
 	// the percent correct, as per IsCorrect
 	Percent float64
-	
+
 	// the result is either from a test or a status update
 	IsTest bool
 }
@@ -105,7 +105,7 @@ type TrainArgs struct {
 	// else, it will not be registered
 	//
 	// should set the provided *bool - 'moreData' - to false if there is no more data
-	// otherwise, it may deadlock 
+	// otherwise, it may deadlock
 	Data func(chan bool, chan Datum, *bool, *error)
 
 	// effectively identical to 'Data'
@@ -114,7 +114,7 @@ type TrainArgs struct {
 	// the channel of data should be closed once there
 	// are no more data to test
 	TestData func(chan bool, chan Datum, *bool, *error)
-	
+
 	// the number of testing data the network should test on before that iteration
 	// if equal to nil (or not given), will never test (allowing TestData to be nil)
 	//
@@ -330,7 +330,6 @@ func (net *Network) Train(args TrainArgs) {
 				return
 			}
 
-
 			correct = args.IsCorrect(outs, d.Outputs)
 		}
 
@@ -382,7 +381,7 @@ func (net *Network) Train(args TrainArgs) {
 			args.Results <- Result{iteration, avg, percent, true}
 		}
 	}
-	
+
 	return
 }
 
@@ -473,7 +472,7 @@ func DataCh(data [][][]float64, loop bool) (func(chan bool, chan Datum, *bool, *
 
 		for {
 			for i := range data {
-				req := <- request
+				req := <-request
 				if !req {
 					return
 				}
