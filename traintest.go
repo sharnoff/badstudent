@@ -3,7 +3,6 @@ package badstudent
 import (
 	"github.com/pkg/errors"
 	"math"
-	"fmt"
 )
 
 // returns a copy of the output values of the network, given the inputs
@@ -63,6 +62,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 }
 
 func (net *Network) addWeights() error {
+
 	for i, out := range net.outLayers {
 		if err := out.addWeights(); err != nil {
 			return errors.Wrapf(err, "Couldn't add weights of network, output layer %v (#%d) failed to add weights\n", out, i)
@@ -276,7 +276,7 @@ func (net *Network) Train(args TrainArgs) {
 		}
 
 		if newBatch, saveChanges = args.Batch(iteration); newBatch && iteration != 0 {
-			if !changesDelayed {
+			if changesDelayed {
 				if err := net.addWeights(); err != nil {
 					*args.Err = errors.Wrapf(err, "Can't *Network.Train(), adding weights from start of new batch on iteration %d failed\n", iteration)
 					return
@@ -296,7 +296,6 @@ func (net *Network) Train(args TrainArgs) {
 		var correct bool
 		{
 			if !moreData {
-				fmt.Println("no more data after iteration", iteration)
 				finishedSafely = true
 				break
 			}
