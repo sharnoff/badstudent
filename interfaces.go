@@ -14,19 +14,23 @@ type Operator interface {
 	Evaluate(*Layer, []float64) error
 	// Evaluate(l *Layer, values []float64) error
 
-	// should add to the deltas of the given input how each of those values affects the total error
-	// through the values of the host layer
+	// should add to the deltas of the given range of inputs how each of those values affects the
+	// total error through the values of the host layer
 	//
 	// arguments: given layer, a way to add to the deltas of the given input,
-	// index of the target input
+	// starting index of those input values, ending index of those input values
 	// more details on add:
 	// adds the given 'float64' to the deltas of the given input at index 'int'
 	// returns error if out of bounds
 	//
 	// Is likely to be called in parallel for multiple inputs,
 	// so this needs to be thread-safe.
-	InputDeltas(*Layer, func(int, float64), int) error
+	InputDeltas(*Layer, func(int, float64), int, int) error
 	// InputDeltas(l *Layer, add func(int, float64), input int) error
+
+	// returns whether or not Adjust() changes the outputs of the Layer.
+	// generally will be whether or not the Layer has weights
+	CanBeAdjusted(*Layer) bool
 
 	// adjusts the weights of the given layer, using its deltas
 	//
