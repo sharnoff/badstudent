@@ -41,34 +41,54 @@ func (n *neurons) Init(l *badstudent.Layer) error {
 }
 
 func (n *neurons) Evaluate(l *badstudent.Layer, values []float64) error {
+	
 	inputs := l.CopyOfInputs()
-	for v := range values {
+	calculateValue := func(i int) {
 		var sum float64
 		for in := range inputs {
-			sum += n.weights[v][in] * inputs[in]
+			sum += n.weights[i][in] * inputs[in]
 		}
 
-		values[v] = sum + (n.biases[v] * bias_value)
-		sum += bias_value * n.biases[v]
+		values[i] = sum + (n.biases[i] * bias_value)
 	}
+
+	opsPerThread, threadsPerCPU := 1, 1
+
+	badstudent.MultiThread(0, len(values), calculateValue, opsPerThread, threadsPerCPU)
 
 	return nil
 }
 
-func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), input int) error {
-	start := l.PreviousInputs(input)
-	end := start + l.InputSize(input)
-
-	for in := start; in < end; in++ {
-		var sum float64
-		for v := 0; v < l.Size(); v++ {
-			sum += l.Delta(v) * n.weights[v][in]
-		}
-
-		add(in-start, sum)
+// used for InputDeltas()
+func (n *neurons) calculateDelta(l *badstudent.Layer, add func(int, float64), index int) {
+	var sum float64
+	for v := 0; v < l.Size(); v++ {
+		sum += l.Delta(v) * n.weights[v][index]
 	}
 
+	add(index, sum)
+}
+
+func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+
+	sendDelta := func(i int) {
+		var sum float64
+		for v := 0; v < l.Size(); v++ {
+			sum += l.Delta(v) * n.weights[v][i]
+		}
+
+		add(i - start, sum)
+	}
+
+	opsPerThread, threadsPerCPU := 1, 1
+
+	badstudent.MultiThread(start, end, sendDelta, opsPerThread, threadsPerCPU)
+
 	return nil
+}
+
+func (n *neurons) CanBeAdjusted(l *badstudent.Layer) bool {
+	return (len(n.weights[0]) != 0)
 }
 
 func (n *neurons) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64, saveChanges bool) error {

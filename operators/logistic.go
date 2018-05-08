@@ -4,7 +4,10 @@ import (
 	"github.com/sharnoff/badstudent"
 	"github.com/pkg/errors"
 	"math"
+	"runtime"
 )
+
+const threadSizeMultiplier int = 1
 
 type logistic int8
 
@@ -21,25 +24,36 @@ func (t logistic) Init(l *badstudent.Layer) error {
 }
 
 func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
-	i := 0
-	for in := range l.InputIterator() {
-		values[i] = 0.5 + 0.5*math.Tanh(0.5*in)
-		i++
+	inputs := l.CopyOfInputs()
+
+	f := func(i int) {
+		values[i] = 0.5 + 0.5 * math.Tanh(0.5 * inputs[i])
 	}
+
+	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
+	threadsPerCPU := 1
+
+	badstudent.MultiThread(0, len(values), f, opsPerThread, threadsPerCPU)
 
 	return nil
 }
 
-func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), input int) error {
-	start := l.PreviousInputs(input)
-	end := start + l.InputSize(input)
+func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
-	for in := start; in < end; in++ {
-		// derivative is: l.Value(in) * (1 - l.Value(in))
-		add(in - start, l.Delta(in) * l.Value(in) * (1 - l.Value(in)))
+	f := func(i int) {
+		add(i - start, l.Delta(i) * l.Value(i) * (1 - l.Value(i)))
 	}
 
+	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
+	threadsPerCPU := 1
+
+	badstudent.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
+
 	return nil
+}
+
+func (t logistic) CanBeAdjusted(l *badstudent.Layer) bool {
+	return false
 }
 
 func (t logistic) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64, saveChanges bool) error {
