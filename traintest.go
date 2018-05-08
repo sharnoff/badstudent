@@ -116,7 +116,7 @@ type TrainArgs struct {
 	TestData func(chan bool, chan Datum, *bool, *error)
 	
 	// the number of testing data the network should test on before that iteration
-	// if equal to nil, will never test (allowing TestData to be nil)
+	// if equal to nil (or not given), will never test (allowing TestData to be nil)
 	//
 	// the results of testing are sent back through Results,
 	// with IsTest = true
@@ -211,6 +211,12 @@ func (net *Network) Train(args TrainArgs) {
 
 		if args.Batch == nil {
 			args.Batch = default_Batch
+		}
+
+		if args.ShouldTest == nil {
+			args.ShouldTest = func(iteration int) int {
+				return 0
+			}
 		}
 	}
 
