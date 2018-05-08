@@ -2,9 +2,6 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	// "sync"
-	// "math"
-	// "fmt"
 )
 
 type status_ int8
@@ -108,32 +105,47 @@ func (l *Layer) evaluate() error {
 // calculates the deltas for each value of the layer
 //
 // calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
-func (l *Layer) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error) error {
+// deltasMatter is: do the deltas of this layer actually need to be calculated, or should this
+// just pass the recursion to its outputs
+func (l *Layer) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error, deltasMatter bool) error {
+
+	deltasMatter = deltasMatter || l.typ.CanBeAdjusted(l)
+
 	l.statusMux.Lock()
 	defer l.statusMux.Unlock()
 	if l.status < evaluated {
 		return errors.Errorf("Can't get deltas of layer %v, has not been evaluated", l)
-	} else if l.status >= deltas {
+	} else if l.status >= deltas && !(deltasMatter && !l.deltasActuallyCalculated) { // REWORK
 		return nil
 	}
 
-	add := func(index int, addition float64) {
-		l.deltas[index] += addition
-	}
-
-	// reset all of the values
-	l.deltas = make([]float64, len(l.values))
-
-	if l.isOutput {
-		if err := rangeCostDeriv(0, len(l.values), add); err != nil {
-			return errors.Wrapf(err, "Can't get deltas of output layer %v, rangeCostDeriv() failed\n", l)
+	if !deltasMatter {
+		for i, out := range l.outputs {
+			if err := out.getDeltas(rangeCostDeriv, deltasMatter); err != nil { // deltasMatter = false
+				return errors.Wrapf(err, "Can't pass on getting deltas from layer %v, getting deltas of layer %v (output %d) failed\n", l, out, i)
+			}
 		}
-	}
-
-	for i, out := range l.outputs {
-		if err := out.inputDeltas(l, add, rangeCostDeriv); err != nil {
-			return errors.Wrapf(err, "Can't get deltas of layer %v, input deltas from layer %v (output %d) failed\n", l, out, i)
+	} else {
+		add := func(index int, addition float64) {
+			l.deltas[index] += addition
 		}
+
+		// reset all of the values
+		l.deltas = make([]float64, len(l.values))
+
+		if l.isOutput {
+			if err := rangeCostDeriv(0, len(l.values), add); err != nil {
+				return errors.Wrapf(err, "Can't get deltas of output layer %v, rangeCostDeriv() failed\n", l)
+			}
+		}
+
+		for i, out := range l.outputs {
+			if err := out.inputDeltas(l, add, rangeCostDeriv); err != nil {
+				return errors.Wrapf(err, "Can't get deltas of layer %v, input deltas from layer %v (output %d) failed\n", l, out, i)
+			}
+		}
+
+		l.deltasActuallyCalculated = true
 	}
 
 	l.status = deltas
@@ -154,7 +166,7 @@ func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv
 		// unlock status so that getDeltas() can lock it
 		l.statusMux.Unlock()
 
-		if err := l.getDeltas(rangeCostDeriv); err != nil {
+		if err := l.getDeltas(rangeCostDeriv, true); err != nil { // deltasMatter = true
 			return errors.Wrapf(err, "Can't provide input deltas of layer %v (to %v), getting own deltas failed\n", l, input)
 		}
 

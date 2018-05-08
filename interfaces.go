@@ -30,6 +30,9 @@ type Operator interface {
 
 	// returns whether or not Adjust() changes the outputs of the Layer.
 	// generally will be whether or not the Layer has weights
+	//
+	// will be run often, but probably should not change
+	// if it changes, there might be unforseen consequences
 	CanBeAdjusted(*Layer) bool
 
 	// adjusts the weights of the given layer, using its deltas

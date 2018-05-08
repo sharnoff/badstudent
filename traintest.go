@@ -41,7 +41,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	}
 
 	for i, in := range net.inLayers {
-		if err = in.getDeltas(rangeCostDeriv); err != nil {
+		if err = in.getDeltas(rangeCostDeriv, false); err != nil { // deltasMatter = false
 			err = errors.Wrapf(err, "Couldn't correct network, getting deltas of network input %v (#%d) failed\n", in, i)
 		}
 	}

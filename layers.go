@@ -25,7 +25,10 @@ type Layer struct {
 
 	// the derivative of each value w.r.t. the total cost
 	// of the particular training example
-	deltas []float64 // δ3
+	deltas []float64 // δ
+
+	// separate from 'status.' true iff inputDeltas() have been run on outputs to layer
+	deltasActuallyCalculated bool
 
 	// determines how the weights will be changed
 	opt Optimizer
