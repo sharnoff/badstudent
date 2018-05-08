@@ -174,7 +174,10 @@ func (l *Layer) inputDeltas(input *Layer, add func(int, float64), rangeCostDeriv
 		return errors.Errorf("Can't provide input deltas of layer %v to %v, %v is not an input of %v", l, input, input, l)
 	}
 
-	if err := l.typ.InputDeltas(l, add, inputIndex); err != nil {
+	start := l.PreviousInputs(inputIndex)
+	end := start + l.InputSize(inputIndex)
+
+	if err := l.typ.InputDeltas(l, add, start, end); err != nil {
 		return errors.Wrapf(err, "Couldn't provide input deltas of layer %v to %v (#%d), Operator failed to get input deltas\n", l, input, inputIndex)
 	}
 
