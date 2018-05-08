@@ -1,3 +1,11 @@
+// requires resources/mnist_train.csv, resources/minst_test.csv to be in local path with format:
+// <class>, img[0], img[1], img[2], ... img[783],
+// <class>, img[0], img[1], img[2], ... img[783],
+// ...
+// where <class> is 0 -> 9 and img[n] is an integer in the range [0, 255]
+//
+// the constants below should be changed accordingly if anything other than the usual MNIST files are used
+
 package main
 
 import (
@@ -130,97 +138,6 @@ func dataCh(data [][][]uint8, loop bool) func(chan bool, chan badstudent.Datum, 
 	}
 }
 
-// // assumes that it take the output of trainData() as args
-// func trainCh(data [][][]uint8, err error) (func(int, int, chan badstudent.AnnotatedDatum, *error), error) {
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return func(amount, start int, ch chan badstudent.AnnotatedDatum, err *error) {
-
-// 		for i := 0; i < amount; i++ {
-// 			index := (start + i) % len(data)
-
-// 			var epoch bool
-// 			if (index + 1) % 1000 == 0 {
-// 				epoch = true
-// 			}
-
-// 			// if index == len(data) - 1 {
-// 			// 	epoch = true
-// 			// }
-
-// 			d := data[index]
-// 			datum := badstudent.Datum{make([]float64, len(d[0])), make([]float64, len(d[1]))}
-// 			for in := range d[0] {
-// 				datum.Inputs[in] = float64(d[0][in])
-// 			}
-
-// 			for out := range d[1] {
-// 				datum.Outputs[out] = float64(d[1][out])
-// 			}
-
-// 			ch <- badstudent.AnnotatedDatum{datum, epoch}
-// 		}
-
-// 		close(ch)
-// 		return
-// 	}, nil
-// }
-
-// func testData(fileName string) (func(int, int, chan badstudent.AnnotatedDatum, *error), error) {
-// 	// attempt to open, then close the file to make sure it's there
-// 	{
-// 		f, err := os.Open(fileName)
-// 		if err != nil {
-// 			return nil, errors.Wrapf(err, "Couldn't open file %s\n", fileName)
-// 		}
-
-// 		f.Close()
-// 	}
-
-// 	return func(amount, start int, ch chan badstudent.AnnotatedDatum, errPtr *error) {
-// 		f, err := os.Open(fileName)
-// 		if err != nil {
-// 			*errPtr = errors.Wrapf(err, "Couldn't open file %s\n", fileName)
-// 			close(ch)
-// 			return
-// 		}
-
-// 		defer close(ch)
-// 		defer f.Close()
-
-// 		sc := bufio.NewScanner(f)
-// 		for i := 0;; i++ {
-// 			if !sc.Scan() {
-// 				break
-// 			}
-
-// 			s := sc.Text()
-
-// 			img, err := image(s)
-// 			if err != nil {
-// 				*errPtr = errors.Wrapf(err, "Coudln't get image from line (%d in test)\n", i)
-// 				return
-// 			}
-
-// 			d := badstudent.Datum{make([]float64, len(img[0])), make([]float64, len(img[1]))}
-// 			for i := range img[0] {
-// 				d.Inputs[i] = float64(img[0][i])
-// 			}
-// 			for i := range img[1] {
-// 				d.Outputs[i] = float64(img[1][i])
-// 			}
-
-// 			ch <- badstudent.AnnotatedDatum{d, false}
-// 		}
-
-// 		return
-// 	}, nil
-// }
-
-// because it's only run with 4 args, we can make certain shortcuts
 func format(fs ...float64) (str string) {
 	for i := range fs {
 		if fs[i] != 0 {
@@ -235,13 +152,13 @@ func format(fs ...float64) (str string) {
 func main() {
 	learningRate := 0.001
 	maxIterations := 600000 // 600 000
-	batchSize := 10
+	batchSize := 1
 	testFrequency := 2000
 	statusFrequency := 1000
 	trainFile := "resources/mnist_train.csv"
 	testFile := "resources/mnist_test.csv"
 
-	fmt.Println("Initializing network...")
+	// fmt.Println("Initializing network...")
 	net := new(badstudent.Network)
 	{
 		l, err := net.Add("inputs", operators.Neurons(), imgSize, nil, nil)
@@ -269,9 +186,9 @@ func main() {
 			panic(err.Error())
 		}
 	}
-	fmt.Println("Done!")
+	// fmt.Println("Done!")
 
-	fmt.Println("Fetching data...")
+	// fmt.Println("Fetching data...")
 	var trainSrc, testSrc func(chan bool, chan badstudent.Datum, *bool, *error)
 	{
 		trainData, err := data(trainFile)
@@ -287,7 +204,7 @@ func main() {
 		trainSrc = dataCh(trainData, true)
 		testSrc = dataCh(testData, false)
 	}
-	fmt.Println("Done!")
+	// fmt.Println("Done!")
 	
 	var res chan badstudent.Result = make(chan badstudent.Result)
 	var err error
@@ -306,38 +223,39 @@ func main() {
 		Err:     &err,
 	}
 
-	fmt.Println("Starting training for", maxIterations, "iterations!")
-	go net.Train(args)
+	// fmt.Println("Starting training for", maxIterations, "iterations!")
+	{
+		go net.Train(args)
 
-	fmt.Println("Iteration, Status Cost, Status Percent, Test Cost, Test Percent")
-	
-	// statusCost, statusPercent, testCost, testPercent
-	results := make([]float64, 4)
-	previousIteration := -1
+		fmt.Println("Iteration, Train Cost, Train %, Test Cost, Test %")
+		
+		// statusCost, statusPercent, testCost, testPercent
+		results := make([]float64, 4)
+		previousIteration := -1
 
-	for r := range res {
-		if r.Iteration > previousIteration && previousIteration >= 0 {
-			fmt.Printf("%d, %s\n", previousIteration, format(results...))
+		for r := range res {
+			if r.Iteration > previousIteration && previousIteration >= 0 {
+				fmt.Printf("%d, %s\n", previousIteration, format(results...))
 
-			results = make([]float64, len(results))
+				results = make([]float64, len(results))
+			}
+
+			if r.IsTest {
+				results[2] = r.Avg
+				results[3] = r.Percent
+			} else {
+				results[0] = r.Avg
+				results[1] = r.Percent
+			}
+
+			previousIteration = r.Iteration
 		}
 
-		if r.IsTest {
-			results[2] = r.Avg
-			results[3] = r.Percent
-		} else {
-			results[0] = r.Avg
-			results[1] = r.Percent
+		if err != nil {
+			panic(err.Error())
 		}
 
-		previousIteration = r.Iteration
+		fmt.Printf("%d, %s\n", previousIteration, format(results...))
 	}
-
-	if err != nil {
-		panic(err.Error())
-	}
-
-	fmt.Printf("%d, %s\n", previousIteration, format(results...))
-
-	fmt.Println("Done training!")
+	// fmt.Println("Done training!")
 }
