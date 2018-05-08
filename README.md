@@ -16,4 +16,4 @@ Current features:
 Future features:
 * saving / loading of networks
 
-Will be testing using cmd/test, which just checks that the network can learn to be an XOR gate
+Will be testing using cmd/xor, which just checks that the network can learn to be an XOR gate, and cmd/mnist
