@@ -2,7 +2,6 @@ package badstudent
 
 import (
 	"math"
-	"sort"
 )
 
 // assumes len(outs) == len(targets)
@@ -17,41 +16,23 @@ func CorrectRound(outs, targets []float64) bool {
 	return true
 }
 
-// for use in CorrectHighest()
-type sortable struct {
-	values  []float64
-	indexes []int
-}
 
-func (s sortable) Len() int {
-	return len(s.values)
-}
-func (s sortable) Less(i, j int) bool {
-	return s.values[i] > s.values[j]
-}
-func (s sortable) Swap(i, j int) {
-	s.values[i], s.values[j] = s.values[j], s.values[i]
-	s.indexes[i], s.indexes[j] = s.indexes[j], s.indexes[i]
-	return
+func HighestIndex(sl []float64) int {
+	highVal := math.Inf(-1)
+	index := -1
+	for i, v := range sl {
+		if v > highVal {
+			highVal = v
+			index = i
+		}
+	}
+
+	return index
 }
 
 // just returns whether or not the largest value in each is the same
 func CorrectHighest(outs, targets []float64) bool {
-	indexes := make([]int, len(outs))
-	for i := range indexes {
-		indexes[i] = i
-	}
-
-	copyOfIndexes := make([]int, len(outs))
-	copy(copyOfIndexes, indexes)
-
-	o := sortable{outs, indexes}
-	t := sortable{targets, copyOfIndexes}
-
-	sort.Sort(o)
-	sort.Sort(t)
-
-	return o.indexes[0] == t.indexes[0]
+	return HighestIndex(outs) == HighestIndex(targets)
 }
 
 func TrainUntil(maxIterations int) func(int, float64) bool {
