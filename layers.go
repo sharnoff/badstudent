@@ -11,6 +11,9 @@ type Layer struct {
 	// Used for unique identification, can be empty
 	Name string
 
+	// used for order identification of which layers were added first
+	id int
+
 	// used for validation during setup
 	hostNetwork *Network
 

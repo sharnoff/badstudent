@@ -1,5 +1,8 @@
 package badstudent
 
+// in addition to these functions,
+// each operator should be able to provide a way to deserialize its stored data,
+// should the network need to be loaded from file
 type Operator interface {
 	// should initialize any weights if used, and return the number of output values from the operation
 	// Init() will always be run on an operator before any other method
