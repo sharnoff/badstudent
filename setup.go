@@ -50,6 +50,10 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, inputs 
 
 		totalInputs := 0
 		for i, in := range inputs {
+			if in == nil {
+				return nil, errors.Errorf("Fatal error: Can't add layer to network, input %d is nil (is there an extra argument to Add()?)", i)
+			}
+
 			totalInputs += in.Size()
 			l.numInputs[i] = totalInputs
 
