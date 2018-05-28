@@ -62,6 +62,11 @@ type Layer struct {
 	statusMux sync.Mutex
 }
 
+// returns the the Name of the Layer, surrounded by double quotes
+func (l *Layer) String() string {
+	return "\"" + l.Name + "\""
+}
+
 // returns the number of values that the layer has
 func (l *Layer) Size() int {
 	return len(l.values)

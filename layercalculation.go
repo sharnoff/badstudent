@@ -19,11 +19,6 @@ const (
 // soon to be removed
 const bias_value float64 = 1
 
-// returns the the Name of the Layer, surrounded by double quotes
-func (l *Layer) String() string {
-	return "\"" + l.Name + "\""
-}
-
 // checks that the Layer (and none of its outputs) don't affect
 // the outputs of the network
 //
