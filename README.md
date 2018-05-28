@@ -12,8 +12,6 @@ Current features:
 * real-time output of training status
 * custom run conditions
 * custom functions for variable learning rates
-
-Future features:
 * saving / loading of networks
 
 Will be testing using cmd/xor, which just checks that the network can learn to be an XOR gate, and cmd/mnist

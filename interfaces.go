@@ -10,7 +10,7 @@ type Operator interface {
 	// Init() will always be run on an operator before any other method
 	// Init() will only be run once
 	//
-	// can use *Layer.Size() to get the size of the layer
+	// can use any available methods on *Layer
 	Init(*Layer) error
 	// Init(l *Layer) (int, error)
 
@@ -18,8 +18,17 @@ type Operator interface {
 	// should store enough information to recreate the Operator from file, should
 	// the need arise
 	//
-	// the directory will not be created or used by the library
-	// Serialize(*Layer, string)
+	// the directory will not be created, used, or altered by the library itself
+	Save(*Layer, string) error
+
+	// given a path to a directory (and the name of it, without a '/' a the end)
+	// should use the information already in the directory to recreate this Operator
+	// from a file
+	// should produce the same result as Init(). The provided layer will be at the
+	// same stage as Init() in its construction
+	//
+	// the directory will not be created, used, or altered by the library itself
+	Load(*Layer, string, []interface{}) error
 
 	// Should update the values of the layer to reflect the inputs and weights (if any)
 	// arguments: given layer, source slice for the values of that layer

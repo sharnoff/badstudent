@@ -26,3 +26,11 @@ func (g gradientdescent) Run(l *badstudent.Layer, size int, grad func(int) float
 
 	return nil
 }
+
+func (g gradientdescent) Save(l *badstudent.Layer, op badstudent.Operator, dirPath string) error {
+	return nil
+}
+
+func (g gradientdescent) Load(l *badstudent.Layer, op badstudent.Operator, dirPath string, aux []interface{}) error {
+	return nil
+}

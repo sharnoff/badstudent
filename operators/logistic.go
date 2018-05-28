@@ -17,7 +17,19 @@ func Logistic() logistic {
 
 func (t logistic) Init(l *badstudent.Layer) error {
 	if l.Size() != l.NumInputs() {
-		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs")
+		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs (%d != %d)", l.Size(), l.NumInputs())
+	}
+
+	return nil
+}
+
+func (t logistic) Save(l *badstudent.Layer, dirPath string) error {
+	return nil
+}
+
+func (t logistic) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+	if l.Size() != l.NumInputs() {
+		return errors.Errorf("Can't load logistic Operator, does not have same number of values as inputs (%d != %d)", l.Size(), l.NumInputs())
 	}
 
 	return nil

@@ -4,6 +4,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sharnoff/badstudent"
 	"math/rand"
+
+	"os"
+	"encoding/json"
 )
 
 type neurons struct {
@@ -37,8 +40,107 @@ func (n *neurons) Init(l *badstudent.Layer) error {
 		for i := range n.weights[v] {
 			n.weights[v][i] = (2*rand.Float64() - 1) / float64(l.NumInputs())
 		}
+	}
 
-		n.biases[v] = (2*rand.Float64() - 1) / float64(l.NumInputs())
+	if l.NumInputs() != 0 {
+		for v := range n.biases {
+			n.biases[v] = (2*rand.Float64() - 1) / float64(l.NumInputs())
+		}
+	}
+
+	return nil
+}
+
+// stores the states of 'weights' and 'biases' into a single file, 'weights.txt'
+func (n *neurons) Save(l *badstudent.Layer, dirPath string) error {
+	if err := os.MkdirAll(dirPath, 0700); err != nil {
+		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
+	}
+
+	f, err := os.Create(dirPath + "/weights.txt")
+	if err != nil {
+		return errors.Errorf("Couldn't save operator: failed to create file 'weights.txt'")
+	}
+
+	finishedSafely := false
+	defer func() {
+		if !finishedSafely {
+			f.Close()
+		}
+	}()
+
+	{
+		j := struct {
+			Weights [][]float64
+			Biases []float64
+		}{n.weights, n.biases}
+
+		enc := json.NewEncoder(f)
+		if err = enc.Encode(&j); err != nil {
+			return errors.Wrapf(err, "Couldn't save operator: failed to encode JSON to file\n")
+		}
+		finishedSafely = true
+		f.Close()
+	}
+
+	if err = n.opt.Save(l, n, dirPath + "/opt"); err != nil {
+		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
+	}
+
+	return nil
+}
+
+// decodes JSON from 'weights.txt'
+func (n *neurons) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+
+	f, err := os.Open(dirPath + "/weights.txt")
+	if err != nil {
+		return errors.Errorf("Couldn't load operator: could not open file 'weights.txt'")
+	}
+
+	finishedSafely := false
+	defer func() {
+		if !finishedSafely {
+			f.Close()
+		}
+	}()
+
+	{
+		var j struct {
+			Weights [][]float64
+			Biases []float64
+		}
+
+		dec := json.NewDecoder(f)
+		if err = dec.Decode(&j); err != nil {
+			return errors.Wrapf(err, "Couldn't load operator: failed to decode JSON from file\n")
+		}
+		finishedSafely = true
+		f.Close()
+
+		if l.Size() != len(j.Weights) || l.Size() != len(j.Biases) {
+			return errors.Errorf("Couldn't load operator: !(l.Size() == len(weights) == len(biases)) (%d, %d, %d)", l.Size(), len(j.Weights), len(j.Biases))
+		}
+		numInputs := l.NumInputs()
+		for i := range j.Weights {
+			if numInputs != len(j.Weights[i]) {
+				return errors.Errorf("Couldn't load operator: l.NumInputs() != len(weights[%d]) (%d != %d)", i, numInputs, len(j.Weights[i]))
+			}
+		}
+
+		n.weights = j.Weights
+		n.biases = j.Biases
+
+		n.weightChanges = make([][]float64, len(n.weights))
+		for i := range n.weightChanges {
+			n.weightChanges[i] = make([]float64, len(n.weights[i]))
+		}
+		n.biasChanges = make([]float64, len(n.biases))
+	}
+
+	err = n.opt.Load(l, n, dirPath + "/opt", aux)
+	if err = n.opt.Load(l, n, dirPath + "/opt", aux); err != nil {
+		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
 	return nil
@@ -97,6 +199,10 @@ func (n *neurons) CanBeAdjusted(l *badstudent.Layer) bool {
 
 func (n *neurons) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
 	inputs := l.CopyOfInputs()
+
+	if len(inputs) == 0 {
+		return nil
+	}
 
 	targetWeights := n.weightChanges
 	targetBiases := n.biasChanges
