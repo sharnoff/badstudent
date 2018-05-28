@@ -1,7 +1,5 @@
 package badstudent
 
-// import "os"
-
 // in addition to these functions,
 // each operator should be able to provide a way to deserialize its stored data,
 // should the network need to be loaded from file
@@ -16,11 +14,12 @@ type Operator interface {
 	Init(*Layer) error
 	// Init(l *Layer) (int, error)
 
-	// Should write to (and close) the file, such that the file can be used to
-	// re-create the Operator.
-	// the file will be purely what Serialize writes to it; nothing is added by
-	// the main library itself
-	// Serialize(*Layer, *os.File)
+	// given a path to a directory (and the name of it, without a '/' at the end)
+	// should store enough information to recreate the Operator from file, should
+	// the need arise
+	//
+	// the directory will not be created or used by the library
+	// Serialize(*Layer, string)
 
 	// Should update the values of the layer to reflect the inputs and weights (if any)
 	// arguments: given layer, source slice for the values of that layer
@@ -60,18 +59,6 @@ type Operator interface {
 	// may be called without any changes waiting to happen
 	AddWeights(*Layer) error
 	// AddWeights(l *Layer) error
-}
-
-// optimizers should have a way to store their data, if they have any
-type Optimizer interface {
-	// arguments: target layer, number of weights, gradient of weight at index,
-	// add to weight at index, learning rate
-	//
-	// number of weights can be 0
-	// gradient of weights, adding to weights allows panicing
-	// adding to weights is not thread-safe for repeated indexes
-	Run(*Layer, int, func(int) float64, func(int, float64), float64) error
-	// Run(l *Layer, size int, grad func(int) float64, add func(int, float64), learningRate float64) error
 }
 
 type CostFunction interface {

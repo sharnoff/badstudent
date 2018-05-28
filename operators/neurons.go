@@ -7,7 +7,7 @@ import (
 )
 
 type neurons struct {
-	opt badstudent.Optimizer
+	opt Optimizer
 
 	weights [][]float64
 	biases  []float64
@@ -16,7 +16,7 @@ type neurons struct {
 	biasChanges   []float64
 }
 
-func Neurons(opt badstudent.Optimizer) *neurons {
+func Neurons(opt Optimizer) *neurons {
 	n := new(neurons)
 	n.opt = opt
 	return n
