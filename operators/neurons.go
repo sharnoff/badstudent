@@ -7,6 +7,8 @@ import (
 )
 
 type neurons struct {
+	opt badstudent.Optimizer
+
 	weights [][]float64
 	biases  []float64
 
@@ -14,8 +16,10 @@ type neurons struct {
 	biasChanges   []float64
 }
 
-func Neurons() *neurons {
-	return new(neurons)
+func Neurons(opt badstudent.Optimizer) *neurons {
+	n := new(neurons)
+	n.opt = opt
+	return n
 }
 
 const bias_value float64 = 1
@@ -91,7 +95,7 @@ func (n *neurons) CanBeAdjusted(l *badstudent.Layer) bool {
 	return (len(n.weights[0]) != 0)
 }
 
-func (n *neurons) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64, saveChanges bool) error {
+func (n *neurons) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
 	inputs := l.CopyOfInputs()
 
 	targetWeights := n.weightChanges
@@ -117,7 +121,7 @@ func (n *neurons) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learning
 			targetWeights[v][in] += addend
 		}
 
-		if err := opt.Run(l, len(inputs)*l.Size(), grad, add, learningRate); err != nil {
+		if err := n.opt.Run(l, len(inputs)*l.Size(), grad, add, learningRate); err != nil {
 			return errors.Wrapf(err, "Couldn't adjust layer %v, running optimizer on weights failed\n", l)
 		}
 	}
@@ -132,7 +136,7 @@ func (n *neurons) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learning
 			targetBiases[index] += addend
 		}
 
-		if err := opt.Run(l, l.Size(), grad, add, learningRate); err != nil {
+		if err := n.opt.Run(l, l.Size(), grad, add, learningRate); err != nil {
 			return errors.Wrapf(err, "Couldn't adjust layer %v, running optimizer on biases failed\n", l)
 		}
 	}

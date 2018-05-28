@@ -17,7 +17,7 @@ type Network struct {
 }
 
 // dims, optimizer, inputs can be nil
-func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Optimizer, inputs ...*Layer) (*Layer, error) {
+func (net *Network) Add(name string, typ Operator, size int, dims []int, inputs ...*Layer) (*Layer, error) {
 
 	if net.layersByName == nil {
 		net.layersByName = make(map[string]*Layer)
@@ -36,7 +36,6 @@ func (net *Network) Add(name string, typ Operator, size int, dims []int, opt Opt
 	l.status = initialized
 	l.hostNetwork = net
 	l.typ = typ
-	l.opt = opt
 	l.id = len(net.layersByID)
 	{
 		l.dims = make([]int, len(dims))

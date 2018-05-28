@@ -56,7 +56,7 @@ func (t logistic) CanBeAdjusted(l *badstudent.Layer) bool {
 	return false
 }
 
-func (t logistic) Adjust(l *badstudent.Layer, opt badstudent.Optimizer, learningRate float64, saveChanges bool) error {
+func (t logistic) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
 	return nil
 }
 

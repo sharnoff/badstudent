@@ -213,7 +213,7 @@ func (l *Layer) adjust(learningRate float64, saveChanges bool) error {
 		return nil
 	}
 
-	if err := l.typ.Adjust(l, l.opt, learningRate, saveChanges); err != nil {
+	if err := l.typ.Adjust(l, learningRate, saveChanges); err != nil {
 		return errors.Wrapf(err, "Couldn't adjust layer %v, Operator adjusting failed\n", l)
 	}
 

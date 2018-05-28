@@ -33,9 +33,6 @@ type Layer struct {
 	// separate from 'status.' true iff inputDeltas() have been run on outputs to layer
 	deltasActuallyCalculated bool
 
-	// determines how the weights will be changed
-	opt Optimizer
-
 	// the layers that the given layer inputs from
 	// could be nil
 	inputs []*Layer

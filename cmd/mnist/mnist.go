@@ -11,7 +11,7 @@ package main
 import (
 	"github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/operators"
-	"github.com/sharnoff/badstudent/optimizers"
+	"github.com/sharnoff/badstudent/operators/optimizers"
 
 	"fmt"
 	"github.com/pkg/errors"
@@ -150,9 +150,9 @@ func format(fs ...float64) (str string) {
 }
 
 func main() {
-	learningRate := 0.001
+	learningRate := 0.0001
 	maxIterations := 600000 // 600 000
-	batchSize := 1
+	batchSize := 100
 	testFrequency := 2000
 	statusFrequency := 1000
 	trainFile := "resources/mnist_train.csv"
@@ -161,24 +161,24 @@ func main() {
 	// fmt.Println("Initializing network...")
 	net := new(badstudent.Network)
 	{
-		l, err := net.Add("inputs", operators.Neurons(), imgSize, nil, nil)
+		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize, nil)
 		if err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer neurons", operators.Neurons(), 500, nil, optimizers.GradientDescent(), l); err != nil {
+		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 500, nil, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 500, nil, nil, l); err != nil {
+		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 500, nil, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(), 10, nil, optimizers.GradientDescent(), l); err != nil {
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, nil, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output logistic", operators.Logistic(), 10, nil, nil, l); err != nil {
+		if l, err = net.Add("output logistic", operators.Logistic(), 10, nil, l); err != nil {
 			panic(err.Error())
 		}
 

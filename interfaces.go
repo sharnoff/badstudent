@@ -1,8 +1,12 @@
 package badstudent
 
+// import "os"
+
 // in addition to these functions,
 // each operator should be able to provide a way to deserialize its stored data,
 // should the network need to be loaded from file
+// the signature should be: func(*Layer, *os.File) Operator
+// for more information, see Load()
 type Operator interface {
 	// should initialize any weights if used, and return the number of output values from the operation
 	// Init() will always be run on an operator before any other method
@@ -11,6 +15,12 @@ type Operator interface {
 	// can use *Layer.Size() to get the size of the layer
 	Init(*Layer) error
 	// Init(l *Layer) (int, error)
+
+	// Should write to (and close) the file, such that the file can be used to
+	// re-create the Operator.
+	// the file will be purely what Serialize writes to it; nothing is added by
+	// the main library itself
+	// Serialize(*Layer, *os.File)
 
 	// Should update the values of the layer to reflect the inputs and weights (if any)
 	// arguments: given layer, source slice for the values of that layer
@@ -40,10 +50,9 @@ type Operator interface {
 
 	// adjusts the weights of the given layer, using its deltas
 	//
-	// args: layer to adjust, an optimzier to use with the gradients,
-	// the learning rate to proivde the optimizer, whether or not the changes
-	// from Adjust() should be applied immediately or stored
-	Adjust(*Layer, Optimizer, float64, bool) error
+	// args: layer to adjust, the learning rate to proivde the optimizer, 
+	// whether or not the changes from Adjust() should be applied immediately or stored
+	Adjust(*Layer, float64, bool) error
 	// Adjust(l *Layer, opt Optimizer, learningRate float64, saveChanges bool) error
 
 	// adds any changes to weights that have been delayed
@@ -53,6 +62,7 @@ type Operator interface {
 	// AddWeights(l *Layer) error
 }
 
+// optimizers should have a way to store their data, if they have any
 type Optimizer interface {
 	// arguments: target layer, number of weights, gradient of weight at index,
 	// add to weight at index, learning rate
