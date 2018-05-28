@@ -16,7 +16,7 @@ func CorrectRound(outs, targets []float64) bool {
 	return true
 }
 
-
+// returns the index of the highest value in an unsorted slice
 func HighestIndex(sl []float64) int {
 	highVal := math.Inf(-1)
 	index := -1
