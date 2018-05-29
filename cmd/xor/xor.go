@@ -48,23 +48,23 @@ func main() {
 		var err error
 		var l, hl *badstudent.Layer
 
-		if l, err = net.Add("input", operators.Neurons(optimizers.GradientDescent()), 2, nil); err != nil {
+		if l, err = net.Add("input", operators.Neurons(optimizers.GradientDescent()), 2); err != nil {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 1, nil, l); err != nil {
+		if hl, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 1, l); err != nil {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 1, nil, hl); err != nil {
+		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 1, hl); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, nil, hl, l); err != nil {
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, hl, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output logistic", operators.Logistic(), 1, nil, l); err != nil {
+		if l, err = net.Add("output logistic", operators.Logistic(), 1, l); err != nil {
 			panic(err.Error())
 		}
 

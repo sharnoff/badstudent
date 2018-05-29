@@ -71,20 +71,8 @@ func (l *Layer) printLayer(dirPath string) error {
 	// print size
 	f.WriteString(strconv.Itoa(l.Size()) + "\n")
 
-	// print dimensions
-	str := ""
-	for i := range l.dims {
-		if i != 0 {
-			str += " "
-		}
-
-		str += strconv.Itoa(l.dims[i])
-	}
-	str += "\n"
-	f.WriteString(str)
-
 	// print list of inputs by id
-	str = ""
+	str := ""
 	for i := range l.inputs {
 		if i != 0 {
 			str += " "
@@ -267,7 +255,7 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 		}
 	}
 
-	// set layer name, size, dimensions
+	// set layer name, size
 	{
 		if !sc.Scan() {
 			return formatErr
@@ -284,20 +272,6 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 		}
 		l.values = make([]float64, size)
 		l.deltas = make([]float64, size)
-	
-		if !sc.Scan() {
-			return formatErr
-		}
-
-		if sc.Text() != "" {
-			strs := strings.Split(sc.Text(), " ")
-			l.dims = make([]int, len(strs))
-			for i, str := range strs {
-				if l.dims[i], err = strconv.Atoi(str); err != nil {
-					return formatErr
-				}
-			}
-		}
 	}
 
 	// set the inputs to l

@@ -17,9 +17,6 @@ type Layer struct {
 	// used for validation during setup
 	hostNetwork *Network
 
-	// the dimensions of the layer, used mainly for setup
-	dims []int
-
 	// handles all of the actual operations from
 	typ Operator
 
@@ -72,10 +69,12 @@ func (l *Layer) Size() int {
 	return len(l.values)
 }
 
-// returns a copy of the dimensions of the layer, as provided by *Network.Add()
+// returns the dimensions of the layer, as provided by its Operator
 func (l *Layer) Dimensions() []int {
-	d := make([]int, len(l.dims))
-	copy(d, l.dims)
+	d := l.typ.Dimensions(l)
+	if d == nil {
+		return []int{l.Size()}
+	}
 	return d
 }
 

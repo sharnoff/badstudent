@@ -161,24 +161,24 @@ func main() {
 	// fmt.Println("Initializing network...")
 	net := new(badstudent.Network)
 	{
-		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize, nil)
+		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize)
 		if err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 500, nil, l); err != nil {
+		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 500, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 500, nil, l); err != nil {
+		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 500, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, nil, l); err != nil {
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output logistic", operators.Logistic(), 10, nil, l); err != nil {
+		if l, err = net.Add("output logistic", operators.Logistic(), 10, l); err != nil {
 			panic(err.Error())
 		}
 

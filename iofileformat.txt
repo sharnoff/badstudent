@@ -10,7 +10,6 @@ _________
 <id>
 <name>
 <size>
-<< dimensions >>
 << list of inputs by id >>
 <number of outputs>
 EOF
