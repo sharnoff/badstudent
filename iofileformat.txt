@@ -1,0 +1,16 @@
+<main_file>.txt:
+________________
+<number of layers>
+<< input layers by id >>
+<< output layers by id >>
+EOF
+
+<id>.txt:
+_________
+<id>
+<name>
+<size>
+<< dimensions >>
+<< list of inputs by id >>
+<number of outputs>
+EOF
