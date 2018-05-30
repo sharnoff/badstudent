@@ -38,28 +38,32 @@ func (t logistic) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 	inputs := l.CopyOfInputs()
 
-	f := func(i int) {
+	f := func(sl []int) {
+		i := sl[0]
 		values[i] = 0.5 + 0.5*math.Tanh(0.5*inputs[i])
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
 	threadsPerCPU := 1
 
-	badstudent.MultiThread(0, len(values), f, opsPerThread, threadsPerCPU)
+	bounds := [][]int{[]int{0, len(values)}}
+	badstudent.MultiThread(bounds, f, opsPerThread, threadsPerCPU)
 
 	return nil
 }
 
 func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
-	f := func(i int) {
-		add(i-start, l.Delta(i)*l.Value(i)*(1-l.Value(i)))
+	f := func(sl []int) {
+		i := sl[0]
+		add(i - start, l.Delta(i) * l.Value(i) * (1 - l.Value(i)))
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
 	threadsPerCPU := 1
 
-	badstudent.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
+	bounds := [][]int{[]int{start, end}}
+	badstudent.MultiThread(bounds, f, opsPerThread, threadsPerCPU)
 
 	return nil
 }
