@@ -14,12 +14,6 @@ type Operator interface {
 	// Init(l *Layer) (int, error)
 	Init(*Layer) error
 
-	// should return the dimensionality of the outputs of this Operator
-	//
-	// ex: a 32x32 image with 3 colors should return []int{32, 32, 3}
-	// can return 'nil' -- will be replaced by []int{l.Size()}
-	Dimensions(*Layer) []int
-
 	// given a path to a directory (and the name of it, without a '/' at the end)
 	// should store enough information to recreate the Operator from file, should
 	// the need arise

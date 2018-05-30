@@ -51,10 +51,6 @@ func (n *neurons) Init(l *badstudent.Layer) error {
 	return nil
 }
 
-func (n *neurons) Dimensions(l *badstudent.Layer) []int {
-	return nil
-}
-
 // stores the states of 'weights' and 'biases' into a single file, 'weights.txt'
 func (n *neurons) Save(l *badstudent.Layer, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {

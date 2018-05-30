@@ -23,10 +23,6 @@ func (t logistic) Init(l *badstudent.Layer) error {
 	return nil
 }
 
-func (t logistic) Dimensions(l *badstudent.Layer) []int {
-	return nil
-}
-
 func (t logistic) Save(l *badstudent.Layer, dirPath string) error {
 	return nil
 }

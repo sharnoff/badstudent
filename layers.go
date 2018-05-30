@@ -69,15 +69,6 @@ func (l *Layer) Size() int {
 	return len(l.values)
 }
 
-// returns the dimensions of the layer, as provided by its Operator
-func (l *Layer) Dimensions() []int {
-	d := l.typ.Dimensions(l)
-	if d == nil {
-		return []int{l.Size()}
-	}
-	return d
-}
-
 func (l *Layer) Value(index int) float64 {
 	return l.values[index]
 }

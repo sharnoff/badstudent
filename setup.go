@@ -16,7 +16,7 @@ type Network struct {
 	layersByID   []*Layer
 }
 
-// dims, optimizer, inputs can be nil
+// inputs can be nil
 func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (*Layer, error) {
 
 	if net.layersByName == nil {
