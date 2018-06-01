@@ -110,12 +110,12 @@ func MultiThread(bounds [][]int, f func([]int), opsPerThread, threadsPerCPU int)
 // the fields are made public in order to allow exporting to JSON,
 // but they should not actually be altered once it has been initialized
 type MultiDim struct {
-	// the dimensions of the 
+	// the width, height, depth, etc. of each dimension
 	Dims []int
 
 	// the number of values encapsulated by a 'set' of this dimension
 	// -- size[0] = dims[0]; size[end] = len(base)
-	// does not need to 
+	// size will be initialized by the constructor -- should not be provided
 	Size []int
 }
 
