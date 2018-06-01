@@ -138,7 +138,6 @@ func (n *neurons) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 		n.biasChanges = make([]float64, len(n.biases))
 	}
 
-	err = n.opt.Load(l, n, dirPath + "/opt", aux)
 	if err = n.opt.Load(l, n, dirPath + "/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
