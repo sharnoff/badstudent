@@ -166,16 +166,6 @@ func (n *neurons) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-// used for InputDeltas()
-func (n *neurons) calculateDelta(l *badstudent.Layer, add func(int, float64), index int) {
-	var sum float64
-	for v := 0; v < l.Size(); v++ {
-		sum += l.Delta(v) * n.weights[v][index]
-	}
-
-	add(index, sum)
-}
-
 func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
 	sendDelta := func(sl []int) {
