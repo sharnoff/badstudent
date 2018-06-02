@@ -1,111 +1,11 @@
-package badstudent
-
-import (
-	"runtime"
-	"sync"
-)
-
-// should be run sequentially, not in a separate thread
-// mainly for use by operators or optimizers in their computationally expensive calculations
-//
-// f is the function that should be run in parallel, where its arguments are in the range of bounds [start, end)
-// -- will be supplied a slice with len equal to len(bounds)
-// bounds: WYSIWYG. Should consist of an n-length slice of 2-length slices (lower and upper bounds)
-// -- assumes that bounds[n][0] < bounds[n][1]
-//
-// counts such that bounds[0] loops once, bounds[1] loops some finite number of times, bounds[2] loops more, etc.
-func MultiThread(bounds [][]int, f func([]int), opsPerThread, threadsPerCPU int) {
-
-	numThreads := runtime.NumCPU() * threadsPerCPU
-
-	dims := make([]int, len(bounds))
-	for i := range dims {
-		dims[i] = bounds[i][1] - bounds[i][0]
-	}
-
-	multiDim := NewMultiDim(dims)
-	places := make([]int, len(bounds))
-
-	var placeMux sync.Mutex
-
-	done := make(chan bool)
-
-	for thread := 0; thread < numThreads; thread++ {
-		go func() {
-			for {
-				placeMux.Lock()
-
-				done := true
-				for i := range places {
-					if places[i] < dims[i] {
-						done = false
-						break
-					}
-				}
-				if done {
-					placeMux.Unlock()
-					break
-				}
-
-				p := make([]int, len(places))
-				copy(p, places)
-
-				change := opsPerThread
-				// leaves 'places' at the maximum value if it goes over
-				multiDim.IncreaseBy(places, change)
-
-				e := make([]int, len(places))
-				copy(e, places)
-
-				placeMux.Unlock()
-
-				// the actual places within 'bounds' that 'places' correlates to
-				temp := make([]int, len(places))
-
-				for {
-					// if p == e, quit
-					different := false
-					for i := len(p) - 1; i >= 0; i-- {
-						if p[i] != e[i] {
-							different = true
-							break
-						}
-					}
-					if !different {
-						break
-					}
-
-					for i := range temp {
-						temp[i] = bounds[i][0] + p[i]
-					}
-
-					f(temp)
-
-					// p++
-					multiDim.Increment(p)
-				}
-			}
-
-			done <- true
-		}()
-	}
-
-	numFinished := 0
-	for numFinished < numThreads {
-		<-done
-		numFinished++
-	}
-
-	return
-}
+package utils
 
 // allows storage of n-dimensional slices
 //
 // stored such that the oscillation frequency of the dimensions decreases as
 // the index in dimensions increases
 //
-// primarily used in n-dimensional range multi-threading,
-// and is made public for use in mult-dimensional operators
+// made public for use in mult-dimensional operators
 //
 // the fields are made public in order to allow exporting to JSON,
 // but they should not actually be altered once it has been initialized
@@ -174,11 +74,11 @@ func (m *MultiDim) Increment(point []int) bool {
 			break
 		}
 
-		if i != len(point) - 1 {
-			point[i] = 0
-		} else {
+		if i == len(point) - 1 {
 			return false
 		}
+
+		point[i] = 0
 	}
 
 	return true
