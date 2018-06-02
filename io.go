@@ -13,7 +13,7 @@ import (
 const main_file string = "main"
 
 func (net *Network) printMain(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + main_file)
+	f, err := os.Create(dirPath + "/" + main_file + ".txt")
 	if err != nil {
 		return errors.Wrapf(err, "Can't print main network to file, couldn't create file %s in %s\n", main_file, dirPath)
 	}
@@ -127,7 +127,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 		return nil, errors.Errorf("Can't load network, containing directory does not exist")
 	}
 
-	main, err := os.Open(dirPath + "/" + main_file)
+	main, err := os.Open(dirPath + "/" + main_file + ".txt")
 	if err != nil {
 		return nil, errors.Errorf("Can't load network, main file does not exist")
 	}
