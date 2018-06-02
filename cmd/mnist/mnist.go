@@ -150,7 +150,7 @@ func format(fs ...float64) (str string) {
 }
 
 func main() {
-	learningRate := 0.0001
+	learningRate := 0.001
 	maxIterations := 600000 // 600 000
 	batchSize := 100
 	testFrequency := 2000
@@ -166,11 +166,19 @@ func main() {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 500, l); err != nil {
+		convArgs := operators.ConvArgs{
+			Opt:         optimizers.GradientDescent(),
+			Dims:        []int{25, 25},
+			InputDims:   []int{28, 28},
+			Filter:      []int{10, 10},
+			ZeroPadding: []int{3, 3},
+			Biases:      true,
+		}
+		if l, err = net.Add("initial convolution", operators.Convolution(&convArgs), 625, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 500, l); err != nil {
+		if l, err = net.Add("convolution logistic", operators.Logistic(), 625, l); err != nil {
 			panic(err.Error())
 		}
 
