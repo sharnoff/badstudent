@@ -142,9 +142,9 @@ func NewMultiDim(dims []int) *MultiDim {
 //
 // the given point should have the dimensions in the same order as they were originally given
 func (m *MultiDim) Index(point []int) int {
-	index := 0
-	for i := range m.Size {
-		index += point[i] * m.Size[i]
+	index := point[0]
+	for i := 1; i < len(m.Size); i++ {
+		index += point[i] * m.Size[i - 1]
 	}
 
 	return index
