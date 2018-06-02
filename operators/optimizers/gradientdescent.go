@@ -2,6 +2,7 @@ package optimizers
 
 import (
 	"github.com/sharnoff/badstudent"
+	"github.com/sharnoff/badstudent/utils"
 	"runtime"
 )
 
@@ -18,15 +19,11 @@ func (g gradientdescent) Run(l *badstudent.Layer, size int, grad func(int) float
 	threadsPerCPU := 1
 	opsPerThread := runtime.NumCPU()
 
-	// treats 'sl' as just one number because MultiThread will only pass
-	// slices with length 1 
-	f := func(sl []int) {
-		i := sl[0]
+	f := func(i int) {
 		add(i, -1*learningRate*grad(i))
 	}
 
-	bounds := [][]int{[]int{0, size}}
-	badstudent.MultiThread(bounds, f, opsPerThread, threadsPerCPU)
+	utils.MultiThread(0, size, f, opsPerThread, threadsPerCPU)
 
 	return nil
 }

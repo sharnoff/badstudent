@@ -3,6 +3,7 @@ package operators
 import (
 	"github.com/pkg/errors"
 	"github.com/sharnoff/badstudent"
+	"github.com/sharnoff/badstudent/utils"
 	"math/rand"
 
 	"os"
@@ -148,8 +149,7 @@ func (n *neurons) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 func (n *neurons) Evaluate(l *badstudent.Layer, values []float64) error {
 
 	inputs := l.CopyOfInputs()
-	calculateValue := func(sl []int) {
-		i := sl[0]
+	calculateValue := func(i int) {
 		var sum float64
 		for in := range inputs {
 			sum += n.weights[i][in] * inputs[in]
@@ -159,17 +159,14 @@ func (n *neurons) Evaluate(l *badstudent.Layer, values []float64) error {
 	}
 
 	opsPerThread, threadsPerCPU := 1, 1
-
-	bounds := [][]int{[]int{0, len(values)}}
-	badstudent.MultiThread(bounds, calculateValue, opsPerThread, threadsPerCPU)
+	utils.MultiThread(0, len(values), calculateValue, opsPerThread, threadsPerCPU)
 
 	return nil
 }
 
 func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
-	sendDelta := func(sl []int) {
-		i := sl[0]
+	sendDelta := func(i int) {
 		var sum float64
 		for v := 0; v < l.Size(); v++ {
 			sum += l.Delta(v) * n.weights[v][i]
@@ -180,8 +177,7 @@ func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 
 	opsPerThread, threadsPerCPU := 1, 1
 
-	bounds := [][]int{[]int{start, end}}
-	badstudent.MultiThread(bounds, sendDelta, opsPerThread, threadsPerCPU)
+	utils.MultiThread(start, end, sendDelta, opsPerThread, threadsPerCPU)
 
 	return nil
 }
