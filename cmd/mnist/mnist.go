@@ -151,7 +151,7 @@ func format(fs ...float64) (str string) {
 
 func main() {
 	learningRate := 0.001
-	maxIterations := 600000 // 600 000
+	maxIterations := 10000 // 10 000
 	batchSize := 100
 	testFrequency := 2000
 	statusFrequency := 1000
@@ -168,17 +168,27 @@ func main() {
 
 		convArgs := operators.ConvArgs{
 			Opt:         optimizers.GradientDescent(),
-			Dims:        []int{25, 25},
+			Dims:        []int{28, 28},
 			InputDims:   []int{28, 28},
-			Filter:      []int{10, 10},
-			ZeroPadding: []int{3, 3},
+			Filter:      []int{5, 5},
+			ZeroPadding: []int{2, 2},
 			Biases:      true,
 		}
-		if l, err = net.Add("initial convolution", operators.Convolution(&convArgs), 625, l); err != nil {
+		if l, err = net.Add("conv-1", operators.Convolution(&convArgs), 784, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("convolution logistic", operators.Logistic(), 625, l); err != nil {
+		poolArgs := operators.PoolArgs{
+			Dims:      []int{14, 14},
+			InputDims: []int{28, 28},
+			Filter:    []int{2, 2},
+			Stride:    []int{2, 2},
+		}
+		if l, err = net.Add("pool-1", operators.AvgPool(&poolArgs), 196, l); err != nil {
+			panic(err.Error())
+		}
+
+		if l, err = net.Add("pool-1 logistic", operators.Logistic(), 196, l); err != nil {
 			panic(err.Error())
 		}
 
@@ -266,4 +276,13 @@ func main() {
 		fmt.Printf("%d, %s\n", previousIteration, format(results...))
 	}
 	// fmt.Println("Done training!")
+
+	// fmt.Println("Saving...")
+	{
+		path := "mnist save"
+		if err := net.Save(path); err != nil {
+			panic(err.Error())
+		}
+	}
+	// fmt.Println("Done!")
 }
