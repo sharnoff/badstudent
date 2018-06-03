@@ -109,13 +109,13 @@ func (n *neurons) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 		finishedSafely = true
 		f.Close()
 
-		if l.Size() != len(j.Weights) || l.Size() != len(j.Biases) {
-			return errors.Errorf("Couldn't load operator: !(l.Size() == len(weights) == len(biases)) (%d, %d, %d)", l.Size(), len(j.Weights), len(j.Biases))
+		if l.Size() != len(n.Weights) || l.Size() != len(n.Biases) {
+			return errors.Errorf("Couldn't load operator: !(l.Size() == len(weights) == len(biases)) (%d, %d, %d)", l.Size(), len(n.Weights), len(n.Biases))
 		}
 		numInputs := l.NumInputs()
-		for i := range j.Weights {
-			if numInputs != len(j.Weights[i]) {
-				return errors.Errorf("Couldn't load operator: l.NumInputs() != len(weights[%d]) (%d != %d)", i, numInputs, len(j.Weights[i]))
+		for i := range n.Weights {
+			if numInputs != len(n.Weights[i]) {
+				return errors.Errorf("Couldn't load operator: l.NumInputs() != len(weights[%d]) (%d != %d)", i, numInputs, len(n.Weights[i]))
 			}
 		}
 	}
