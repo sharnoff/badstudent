@@ -190,8 +190,8 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 			}
 		}
 		for i, d := range c.ZeroPadding {
-			if d < 1 {
-				return errors.Errorf("Can't Init() convolutional layer, ZeroPadding[%d] = %d. All dimension values should be ≥ 1", i, d)
+			if d < 0 {
+				return errors.Errorf("Can't Init() convolutional layer, ZeroPadding[%d] = %d. Can't have negative padding", i, d)
 			}
 		}
 
@@ -460,7 +460,7 @@ func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), s
 
 		var sum float64
 		for {
-			if f[len(f)-1] >= c.Filter.Dims[len(f)-1] {
+			if f[len(f)-1] >= c.Filter.Dims[len(f)-1] || out[len(out)-1] < 0 {
 				break
 			}
 
@@ -481,7 +481,11 @@ func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), s
 				f[i] += c.Stride[i]
 				out[i] -= c.Stride[i]
 
-				if f[i] < c.Filter.Dims[i] || i < len(f)-1 {
+				if f[i] < c.Filter.Dims[i] && out[i] >= 0 {
+					break
+				}
+
+				if i == len(f)-1 {
 					break
 				}
 
