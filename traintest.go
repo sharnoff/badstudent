@@ -61,7 +61,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	return
 }
 
-func (net *Network) addWeights() error {
+func (net *Network) AddWeights() error {
 
 	for i, out := range net.outLayers {
 		if err := out.addWeights(); err != nil {
@@ -283,7 +283,7 @@ func (net *Network) Train(args TrainArgs) {
 
 		if newBatch, saveChanges = args.Batch(iteration); newBatch && iteration != 0 {
 			if changesDelayed {
-				if err := net.addWeights(); err != nil {
+				if err := net.AddWeights(); err != nil {
 					*args.Err = errors.Wrapf(err, "Can't *Network.Train(), adding weights from start of new batch on iteration %d failed\n", iteration)
 					return
 				}
@@ -348,7 +348,7 @@ func (net *Network) Train(args TrainArgs) {
 	// finish up before returning
 	{
 		if changesDelayed {
-			if err := net.addWeights(); err != nil {
+			if err := net.AddWeights(); err != nil {
 				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights after finishing training (iteration %d) failed\n", iteration)
 				return
 			}
