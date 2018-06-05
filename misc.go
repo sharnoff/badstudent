@@ -2,18 +2,49 @@ package badstudent
 
 import (
 	"math"
+	"sort"
 )
 
 // assumes len(outs) == len(targets)
 func CorrectRound(outs, targets []float64) bool {
 	for i := range outs {
-		// rounds to 0 if a number is < 0.5, 1 if > 0.5. Tanh reduces the value to (0, 1)
+		// rounds to 0 if a number is < 0.5, 1 if ≥ 0.5. Tanh reduces the value to (0, 1)
 		if math.Round(0.5*(1+math.Tanh(outs[i]-0.5))) != targets[i] {
 			return false
 		}
 	}
 
 	return true
+}
+
+// for use in HighestIndexes
+type sortable struct {
+	values  []float64
+	indexes []int
+}
+
+func (s sortable) Len() int {
+	return len(s.values)
+}
+func (s sortable) Less(i, j int) bool {
+	return s.values[i] > s.values[j]
+}
+func (s sortable) Swap(i, j int) {
+	s.values[i], s.values[j] = s.values[j], s.values[i]
+	s.indexes[i], s.indexes[j] = s.indexes[j], s.indexes[i]
+	return
+}
+
+func HighestIndexes(sl []float64) []int {
+	indexes := make([]int, len(sl))
+	for i := range indexes {
+		indexes[i] = i
+	}
+
+	s := sortable{sl, indexes}
+	sort.Sort(s)
+
+	return s.indexes
 }
 
 // returns the index of the highest value in an unsorted slice
