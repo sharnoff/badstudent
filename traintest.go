@@ -61,6 +61,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	return
 }
 
+// makes any saved changes to weights
 func (net *Network) AddWeights() error {
 
 	for i, out := range net.outLayers {
