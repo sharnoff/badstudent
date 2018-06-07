@@ -89,12 +89,18 @@ func (l *Layer) printLayer(dirPath string) error {
 	return nil
 }
 
-func (net *Network) Save(dirPath string) error {
+func (net *Network) Save(dirPath string, overwrite bool) error {
 	var err error
 
 	// check if the folder already exists
 	if _, err = os.Stat(dirPath); err == nil {
-		return errors.Errorf("Can't save network, folder already exists")
+		if !overwrite {
+			return errors.Errorf("Can't save network, folder already exists, and overwrite is not enabled")
+		}
+
+		if err = os.RemoveAll(dirPath); err != nil {
+			return errors.Errorf("Can't save network, couldn't remove pre-existing folder to overwrite")
+		}
 	}
 
 	if err = os.MkdirAll(dirPath, 0700); err != nil {

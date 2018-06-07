@@ -280,7 +280,7 @@ func main() {
 	// fmt.Println("Saving...")
 	{
 		path := "mnist save"
-		if err := net.Save(path); err != nil {
+		if err := net.Save(path, false); err != nil {
 			panic(err.Error())
 		}
 	}

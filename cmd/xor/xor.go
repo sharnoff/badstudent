@@ -148,7 +148,7 @@ func main() {
 	fmt.Println("Saving...")
 	{
 		path := "xor save"
-		if err := net.Save(path); err != nil {
+		if err := net.Save(path, false); err != nil {
 			panic(err.Error())
 		}
 	}
