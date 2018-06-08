@@ -16,7 +16,12 @@ type Network struct {
 	layersByID   []*Layer
 }
 
-// inputs can be nil
+// Add() adds a new layer to the Network, with given name, size, inputs, and Operator
+//
+// 'name' must be unique to this layer
+// if 'inputs' is nil, this layer will be added to the set of input layers to the Network
+//
+// if this function returns an error, the host Network will not be noticeably changed
 func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (*Layer, error) {
 
 	if net.layersByName == nil {
@@ -38,35 +43,36 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 	l.typ = typ
 	l.id = len(net.layersByID)
 
-	if len(inputs) == 0 {
-		net.inLayers = append(net.inLayers, l)
-	} else {
+	{
 		l.inputs = inputs
 		l.numInputs = make([]int, len(inputs))
-
 		totalInputs := 0
 		for i, in := range inputs {
 			if in == nil {
-				return nil, errors.Errorf("Fatal error: Can't add layer to network, input %d is nil (is there an extra argument to Add()?)", i)
+				return nil, errors.Errorf("Can't add layer to network, input #%d is nil", i)
+			} else if in.hostNetwork != net {
+				return nil, errors.Errorf("Can't add layer to network, input #%d (%v) does not belong to the same Network", i, in)
 			}
-
+	
 			totalInputs += in.Size()
 			l.numInputs[i] = totalInputs
+		}
+	}
 
-			if in.hostNetwork != net {
-				return nil, errors.Errorf("Fatal error: Can't add layer to network, input %v (#%d) does not belong to the same *Network", in, i)
-			}
+	if err := typ.Init(l); err != nil {
+		return nil, errors.Wrapf(err, "Couldn't add layer %v to network, initializing Operator failed\n", l)
+	}
 
+	if len(inputs) == 0 {
+		net.inLayers = append(net.inLayers, l)
+	} else {
+		for _, in := range inputs {
 			in.outputs = append(in.outputs, l)
 		}
 	}
 
 	l.values = make([]float64, size)
 	l.deltas = make([]float64, size)
-
-	if err := typ.Init(l); err != nil {
-		return nil, errors.Wrapf(err, "Fatal error: Couldn't add layer %v to network, initializing Operator failed\n", l)
-	}
 
 	net.layersByName[name] = l
 	net.layersByID = append(net.layersByID, l)
