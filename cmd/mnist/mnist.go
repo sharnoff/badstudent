@@ -167,14 +167,13 @@ func main() {
 		}
 
 		convArgs := operators.ConvArgs{
-			Opt:         optimizers.GradientDescent(),
 			Dims:        []int{28, 28},
 			InputDims:   []int{28, 28},
 			Filter:      []int{5, 5},
 			ZeroPadding: []int{2, 2},
 			Biases:      true,
 		}
-		if l, err = net.Add("conv-1", operators.Convolution(&convArgs), 784, l); err != nil {
+		if l, err = net.Add("conv-1", operators.Convolution(&convArgs, optimizers.GradientDescent()), 784, l); err != nil {
 			panic(err.Error())
 		}
 

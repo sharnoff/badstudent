@@ -15,9 +15,6 @@ import (
 // has provided public fields to allow for simplified and more easily readible syntax
 // These fields can be chaned once given to the constructor
 type ConvArgs struct {
-	// The Optimizer that will adjust the weights
-	Opt Optimizer
-
 	// The dimensions of the output -- usually will be {width, height, depth...}
 	// Init() will return error if the product of 'Dims' multiplied together (with Depth, too) doesn't
 	// equal the number of values in the layer - *Layer.Size()
@@ -99,13 +96,13 @@ const zeroPadding_value float64 = 0
 // does not check for possible errors yet -- that is done with Init()
 //
 // can be supplied 'nil' if used for Load()
-func Convolution(conv *ConvArgs) *convolution {
-	if conv == nil {
-		return new(convolution)
-	}
-
+func Convolution(conv *ConvArgs, opt Optimizer) *convolution {
 	c := new(convolution)
-	c.opt = conv.Opt
+	c.opt = opt
+
+	if conv == nil {
+		return c
+	}
 
 	c.Outs = utils.NewMultiDim(conv.Dims)
 	c.Ins = utils.NewMultiDim(conv.InputDims)
