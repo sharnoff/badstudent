@@ -53,7 +53,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 			} else if in.hostNetwork != net {
 				return nil, errors.Errorf("Can't add layer to network, input #%d (%v) does not belong to the same Network", i, in)
 			}
-	
+
 			totalInputs += in.Size()
 			l.numInputs[i] = totalInputs
 		}
@@ -84,19 +84,38 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 //  - no outputs are also inputs
 //  - all given outputs belong to the network
 //  - no layers don't affect the network outputs
+//
+// if SetOutputs() returns an error, the network has remained unchanged
 func (net *Network) SetOutputs(outputs ...*Layer) error {
 	if net.inLayers == nil {
-		return errors.Errorf("Can't set outputs of network, network has no layers (net.inLayers == nil)")
+		return errors.Errorf("Can't set outputs of network, network has no layers")
+	} else if len(outputs) == 0 {
+		return errors.Errorf("Can't set outputs of network, none given")
+	}
+
+	for i, out := range outputs {
+		if out.hostNetwork != net {
+			return errors.Errorf("Can't set outputs of network, output layer #%d (%v) does not belong to this network", i, out)
+		} else if len(out.inputs) == 0 {
+			return errors.Errorf("Can't set outputs of network, output layer #%d (%v) is both an input and an output", i, out)
+		}
+
+		// check that there are no duplicates
+		for o := i + 1; o < len(outputs); o++ {
+			if out == outputs[o] {
+				return errors.Errorf("Can't set outputs of network, output #%d (%v) is also #%d", i, out, o)
+			}
+		}
+	}
+
+	for i, in := range net.inLayers {
+		if err := in.checkOutputs(); err != nil {
+			return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v (input %d) failed\n", in, i)
+		}
 	}
 
 	numOutValues := 0
-	for i, out := range outputs {
-		if out.hostNetwork != net {
-			return errors.Errorf("Can't set outputs of network, output layer %v (#%d) does not belong to this network", out, i)
-		} else if len(out.inputs) == 0 {
-			return errors.Errorf("Can't set outputs of network, layer %v (output %d) is both an input and an output", out, i)
-		}
-
+	for _, out := range outputs {
 		out.isOutput = true
 		out.placeInOutputs = numOutValues
 
@@ -130,12 +149,6 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		for _, in := range net.inLayers {
 			in.values = net.inputs[place : place+in.Size()]
 			place += in.Size()
-		}
-	}
-
-	for i, in := range net.inLayers {
-		if err := in.checkOutputs(); err != nil {
-			return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v (input %d) failed\n", in, i)
 		}
 	}
 
