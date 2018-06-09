@@ -18,7 +18,7 @@ type Network struct {
 
 // Add() adds a new layer to the Network, with given name, size, inputs, and Operator
 //
-// 'name' must be unique to this layer
+// 'name' must be unique to this layer, cannot be empty, and cannot contain a (double) quote
 // if 'inputs' is nil, this layer will be added to the set of input layers to the Network
 //
 // if this function returns an error, the host Network will not be noticeably changed
@@ -34,6 +34,8 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 		return nil, errors.Errorf("Can't add layer to network, name \"%s\" is already taken", name)
 	} else if name == "" {
 		return nil, errors.Errorf("Can't add layer to network, name cannot be \"\"")
+	} else if strings.Contains(name, `"`) {
+		return nil, errors.Errorf("Can't add layer to network, name cannot contain \"")
 	}
 
 	l := new(Layer)
