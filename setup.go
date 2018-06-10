@@ -3,6 +3,7 @@ package badstudent
 import (
 	"github.com/pkg/errors"
 	// "math/rand"
+	"strings"
 )
 
 type Network struct {
