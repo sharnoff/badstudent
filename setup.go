@@ -62,6 +62,9 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 		}
 	}
 
+	l.values = make([]float64, size)
+	l.deltas = make([]float64, size)
+
 	if err := typ.Init(l); err != nil {
 		return nil, errors.Wrapf(err, "Couldn't add layer %v to network, initializing Operator failed\n", l)
 	}
@@ -74,8 +77,6 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 		}
 	}
 
-	l.values = make([]float64, size)
-	l.deltas = make([]float64, size)
 
 	net.layersByName[name] = l
 	net.layersByID = append(net.layersByID, l)
@@ -96,8 +97,21 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		return errors.Errorf("Can't set outputs of network, none given")
 	}
 
+	var allGood = false
+	defer func() {
+		if !allGood {
+			for _, out := range outputs {
+				if out != nil {
+					out.isOutput = false
+				}
+			}
+		}
+	}()
+
 	for i, out := range outputs {
-		if out.hostNetwork != net {
+		if out == nil {
+			return errors.Errorf("Can't set outputs of network, output layer #%d is nil, i")
+		} else if out.hostNetwork != net {
 			return errors.Errorf("Can't set outputs of network, output layer #%d (%v) does not belong to this network", i, out)
 		} else if len(out.inputs) == 0 {
 			return errors.Errorf("Can't set outputs of network, output layer #%d (%v) is both an input and an output", i, out)
@@ -109,6 +123,8 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 				return errors.Errorf("Can't set outputs of network, output #%d (%v) is also #%d", i, out, o)
 			}
 		}
+
+		out.isOutput = true
 	}
 
 	for i, in := range net.inLayers {
@@ -117,9 +133,10 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		}
 	}
 
+	allGood = true
+
 	numOutValues := 0
 	for _, out := range outputs {
-		out.isOutput = true
 		out.placeInOutputs = numOutValues
 
 		numOutValues += out.Size()
