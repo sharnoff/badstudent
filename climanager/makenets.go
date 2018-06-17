@@ -328,7 +328,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 
 				if sc.Text() == "quit" || sc.Text() == "q" {
 					println("Quitting.")
-					return false, false, nil
+					return false, true, nil
 				}
 
 				dimStrs := strings.Split(sc.Text(), " ")
@@ -339,10 +339,10 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 
 				*dims = make([]int, len(dimStrs))
 				for i := range dimStrs {
-					if *dims[i], err = strconv.Atoi(dimStrs[i]); err != nil {
+					if (*dims)[i], err = strconv.Atoi(dimStrs[i]); err != nil {
 						println("Dimensions given should be integers. Try again.")
 						continue
-					} else if *dims[i] < 1 {
+					} else if (*dims)[i] < 1 {
 						println("Dimensions should be ≥ 1. Try again.")
 						continue
 					}
@@ -352,13 +352,13 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					printf(notMatch, len(*dims), dimSize)
 
 					printf("Restart construction from input dimensions? (y/n): ")
-					restart, err := climanager.QueryTF(sc)
+					restart, err := QueryTF(sc)
 					if err != nil {
 						return true, false, errors.Wrapf(err, "")
 					}
 
 					if restart {
-						return false, false, nil
+						return true, false, nil
 					} else {
 						continue
 					}
@@ -366,6 +366,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 
 				break
 			}
+
+			return false, false, nil
 		}
 
 		// construct the operators
@@ -390,7 +392,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 
 				return ""
 			}
-			leakFactor, err := climanager.QueryFloat(sc, isValid)
+			leakFactor, err = QueryFloat(sc, isValid)
 			if err != nil {
 				return errors.Wrapf(err, "")
 			}
@@ -406,14 +408,18 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Dims
-				restart, quit, err = getDims(len(args.InputDims), &args.Dims, "Number of output and input dimensions should match (%d !+ %d)\n", "Please enter preferred output dimensions: ")
+				restart, quit, err = getDims(len(args.InputDims), &args.Dims, "Number of output and input dimensions should match (%d != %d)\n", "Please enter preferred output dimensions: ")
 				if err != nil {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Filter
@@ -422,6 +428,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Stride
@@ -430,6 +438,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				break
@@ -461,6 +471,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Dims
@@ -469,6 +481,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Filter
@@ -477,6 +491,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Stride
@@ -485,13 +501,18 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					return errors.Wrapf(err, "")
 				} else if restart {
 					continue
+				} else if quit {
+					return nil
 				}
 
 				// Zero padding
 				restart, quit, err = getDims(len(args.InputDims), &args.ZeroPadding, "Number of zero-padding and input dimensions should match (%d != %d)\n", "Please enter preferred zero padding (include '0' for dimensions with none): ")
 				if err != nil {
-
 					return errors.Wrapf(err, "")
+				} else if restart {
+					continue
+				} else if quit {
+					return nil
 				}
 
 				printf("Please enter preferred depth: ")
@@ -499,14 +520,15 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					if d < 1 {
 						return "Depth should be ≥ 1. Try again: "
 					}
+					return ""
 				}
-				args.Depth, err = climanager.QueryInt(sc, validDepth)
+				args.Depth, err = QueryInt(sc, validDepth)
 				if err != nil {
 					return errors.Wrapf(err, "")
 				}
 
 				printf("Please enter whether or not to have biases (y/n): ")
-				args.Biases, err = climanager.QueryTF(sc)
+				args.Biases, err = QueryTF(sc)
 				if err != nil {
 					return errors.Wrapf(err, "")
 				}
@@ -532,7 +554,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				return ""
 			}
 
-			if size, err = climanager.QueryInt(sc, isValid); err != nil {
+			if size, err = QueryInt(sc, isValid); err != nil {
 				return errors.Wrapf(err, "")
 			}
 
