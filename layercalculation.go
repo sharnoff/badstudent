@@ -1,5 +1,7 @@
 package badstudent
 
+// internal management of the steps of evaluation and correction
+
 import (
 	"github.com/pkg/errors"
 )

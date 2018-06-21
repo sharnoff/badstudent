@@ -54,7 +54,7 @@ func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
 
 	f := func(i int) {
-		add(i - start, l.Delta(i) * l.Value(i) * (1 - l.Value(i)))
+		add(i-start, l.Delta(i)*l.Value(i)*(1-l.Value(i)))
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier

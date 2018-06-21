@@ -6,8 +6,8 @@ import (
 	"github.com/sharnoff/badstudent/utils"
 
 	"encoding/json"
-	"os"
 	"fmt"
+	"os"
 )
 
 type PoolArgs struct {

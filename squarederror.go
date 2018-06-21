@@ -8,11 +8,14 @@ import (
 
 type squarederror bool
 
+// The standard squared error function, except for that it returns the average
+// SquaredError is a provided implementation of a CostFunction
+//
+// if 'debug' is true, this will, at each call to Cost(), println(values, targets)
 func SquaredError(debug bool) squarederror {
 	return squarederror(debug)
 }
 
-// returns error if len(values) != len(targets)
 func (c squarederror) Cost(values, targets []float64) (float64, error) {
 	if len(values) != len(targets) {
 		return 0, errors.Errorf("Can't get Cost() of 'squared error', len(values) != len(targets) (%d != %d)", len(values), len(targets))
@@ -31,13 +34,8 @@ func (c squarederror) Cost(values, targets []float64) (float64, error) {
 }
 
 func (c squarederror) Deriv(outputs, targets []float64, start, end int, returnFunc func(int, float64)) error {
-
 	for i := start; i < end; i++ {
-		deriv := outputs[i] - targets[i]
-
-		// to handle tanh, will be removed
-		// deriv *= outputs[i] * (1 - outputs[i])
-		returnFunc(i-start, deriv)
+		returnFunc(i-start, outputs[i]-targets[i])
 	}
 
 	return nil

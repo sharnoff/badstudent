@@ -2,7 +2,6 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	// "math/rand"
 	"strings"
 )
 
@@ -17,12 +16,13 @@ type Network struct {
 	layersByID   []*Layer
 }
 
-// Add() adds a new layer to the Network, with given name, size, inputs, and Operator
+// Adds a new layer to the Network, with given name, size, inputs, and Operator
+// If no inputs are given, the layer will be one of the input layers, and its size added to the
+// number of inputs
 //
-// 'name' must be unique to this layer, cannot be empty, and cannot contain a (double) quote
-// if 'inputs' is nil, this layer will be added to the set of input layers to the Network
+// The name of each layer must be unique, cannot be "", and cannot contain a `"`
 //
-// if this function returns an error, the host Network will not be noticeably changed
+// if Add returns an error, the host Network will not be functionally different
 func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (*Layer, error) {
 
 	if net.layersByName == nil {
@@ -77,19 +77,18 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Layer) (
 		}
 	}
 
-
 	net.layersByName[name] = l
 	net.layersByID = append(net.layersByID, l)
 
 	return l, nil
 }
 
-// checks that:
-//  - no outputs are also inputs
-//  - all given outputs belong to the network
-//  - no layers don't affect the network outputs
+// Finalizes the Network, checking that:
+//  - no output Layers are also inputs
+//  - all given outputs belong to the given network
+//  - all layers affect the outputs
 //
-// if SetOutputs() returns an error, the network has remained unchanged
+// if SetOutputs returns an error, the network has remained unchanged
 func (net *Network) SetOutputs(outputs ...*Layer) error {
 	if net.inLayers == nil {
 		return errors.Errorf("Can't set outputs of network, network has no layers")

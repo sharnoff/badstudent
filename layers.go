@@ -3,9 +3,10 @@ package badstudent
 import (
 	"sort"
 	"sync"
-	// "fmt"
 )
 
+// The Layer is the fundamental building block with which the network is built.
+// Each layer has a Operator, which determines how it changes the values it recieves as input
 type Layer struct {
 	// The name that will be used to print this layer.
 	// Used for unique identification, can be empty

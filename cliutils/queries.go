@@ -4,8 +4,8 @@ import (
 	"github.com/pkg/errors"
 
 	"bufio"
-	"strconv"
 	"fmt"
+	"strconv"
 )
 
 // returns user input of true/false, whether or not user quits
@@ -24,7 +24,7 @@ func QueryTF(sc *bufio.Scanner) (bool, bool, error) {
 
 		if sc.Text() == "y" || sc.Text() == "yes" {
 			return true, false, nil
-		} else if sc.Text() == "n"  || sc.Text() == "no" {
+		} else if sc.Text() == "n" || sc.Text() == "no" {
 			return false, false, nil
 		} else {
 			fmt.Print("Please enter 'y' or 'n': ")
@@ -50,7 +50,7 @@ func QueryInt(sc *bufio.Scanner, isValid func(int) string) (int, bool, error) {
 		if sc.Text() == "quit" || sc.Text() == "q" {
 			return 0, true, nil
 		}
-		
+
 		if v, err := strconv.Atoi(sc.Text()); err != nil {
 			fmt.Print("Please enter an integer: ")
 		} else if errMsg := isValid(v); errMsg != "" {
@@ -72,7 +72,7 @@ func QueryFloat(sc *bufio.Scanner, isValid func(float64) string) (float64, bool,
 		if sc.Text() == "quit" || sc.Text() == "q" {
 			return 0, true, nil
 		}
-		
+
 		if v, err := strconv.ParseFloat(sc.Text(), 64); err != nil {
 			fmt.Print("Please enter an floating point number: ")
 		} else if errMsg := isValid(v); errMsg != "" {
@@ -94,7 +94,7 @@ func QueryString(sc *bufio.Scanner, isValid func(string) string) (string, bool, 
 		if sc.Text() == "quit" || sc.Text() == "q" {
 			return "", true, nil
 		}
-		
+
 		if errMsg := isValid(sc.Text()); errMsg != "" {
 			fmt.Print(errMsg)
 		} else {

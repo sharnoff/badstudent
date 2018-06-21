@@ -5,9 +5,16 @@ import (
 	"sync"
 )
 
+// Multithreads an operation on a range of integers
+//
 // should be run sequentially, not in a separate thread
-// mainly for use by operators or optimizers in their mass calculations
-// f is the function that should be run multithreaded
+// designed for use by operators or optimizers in their mass calculations
+//
+// the range includes 'start' and excludes 'end'
+//  - MultiThread assumes that end ≥ start
+// 'f' is the function that should be run for each value in the range
+// 'opsPerThread' is the number of operations that each goroutine will handle before requesting another set
+// 'threadsPerCPU' is the number of goroutines created for each CPU
 func MultiThread(start, end int, f func(int), opsPerThread, threadsPerCPU int) {
 
 	numThreads := runtime.NumCPU() * threadsPerCPU

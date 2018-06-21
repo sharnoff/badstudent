@@ -5,7 +5,11 @@ import (
 	"sort"
 )
 
-// assumes len(outs) == len(targets)
+// CorrectRound is the default 'IsCorrect' function to be provided to TrainArgs
+//
+// A value is correct if it is on the same side of 0.5 as the target
+// -- values less than 0.5 round to 0, and values greater than or equal to 0.5 round to 1
+// This requires 'targets' to consist of either '0' or '1'
 func CorrectRound(outs, targets []float64) bool {
 	for i := range outs {
 		// rounds to 0 if a number is < 0.5, 1 if ≥ 0.5. Tanh reduces the value to (0, 1)
@@ -15,6 +19,11 @@ func CorrectRound(outs, targets []float64) bool {
 	}
 
 	return true
+}
+
+// An alternate 'IsCorrect' function to provide to TrainArgs
+func CorrectHighest(outs, targets []float64) bool {
+	return HighestIndex(outs) == HighestIndex(targets)
 }
 
 // for use in HighestIndexes
@@ -35,6 +44,7 @@ func (s sortable) Swap(i, j int) {
 	return
 }
 
+// returns the indexes of the highest values in the given slice, from greatest to least
 func HighestIndexes(sl []float64) []int {
 	indexes := make([]int, len(sl))
 	for i := range indexes {
@@ -61,38 +71,36 @@ func HighestIndex(sl []float64) int {
 	return index
 }
 
-// just returns whether or not the largest value in each is the same
-func CorrectHighest(outs, targets []float64) bool {
-	return HighestIndex(outs) == HighestIndex(targets)
-}
-
+// Acts as a TrainArgs.RunCondition
+// Tells the network to run for a specified number of individual data corrected
 func TrainUntil(maxIterations int) func(int, float64) bool {
 	return func(iteration int, lastErr float64) bool {
 		return iteration < maxIterations
 	}
 }
 
-// returns a function that satisfies TrainArgs.LearningRate
+// Acts as a TrainArgs.LearningRate
+// Always returns the provided 'learningRate'
 func ConstantRate(learningRate float64) func(int, float64) float64 {
 	return func(iteration int, lastErr float64) float64 {
 		return learningRate
 	}
 }
 
-// returns a function that satisfies TrainArgs.SendStatus
+// Returns a function that acts as a TrainArgs.SendStatus
 // 'frequency' is in units of iterations
 //
-// this function is self-explanatory from viewing the source
+// returns (iteration % frequency == 0)
 func Every(frequency int) func(int) bool {
 	return func(iteration int) bool {
 		return iteration%frequency == 0
 	}
 }
 
-// returns a function that satisfies TrainArgs.Batch
-// 'frequency' is in units of iterations
+// Returns a function that acts as a TrainArgs.Batch
+// 'frequency is in units of iterations
 //
-// this function is self-explanatory from viewing the source
+// this function is similar to Every(), and self-explanatory from viewing the source
 func BatchEvery(frequency int) func(int) (bool, bool) {
 	if frequency == 1 {
 		return func(iteration int) (bool, bool) {
@@ -105,11 +113,11 @@ func BatchEvery(frequency int) func(int) (bool, bool) {
 	}
 }
 
-// returns a function that satisfies TrainArgs.ShouldTest
+// Returns a function that acts as a TrainArgs.ShouldTest
 // 'frequency' is in units of iterations
-// 'amount' is the quantity of test data that should be tested on
+// 'amount' is the quantity of test data that will be tested on
 //
-// this function is self-explanatory from viewing the source
+// this function is similar to Every(), and self-explanatory from viewing the source
 func TestEvery(frequency, amount int) func(int) int {
 	return func(iteration int) int {
 		if iteration%frequency == 0 {

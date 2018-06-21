@@ -1,11 +1,11 @@
 package badstudent
 
 import (
+	"bufio"
 	"github.com/pkg/errors"
 	"os"
-	"bufio"
-	"strings"
 	"strconv"
+	"strings"
 	// "fmt"
 )
 
@@ -89,6 +89,11 @@ func (l *Layer) printLayer(dirPath string) error {
 	return nil
 }
 
+// saves the network to the specified path, creating a directory to contain it (with permissions 0700)
+//
+// The provided path should not have all directories already created, unless overwrite is 'true'
+//
+// if 'overwrite' is false and the directory already exists, Save will return error.
 func (net *Network) Save(dirPath string, overwrite bool) error {
 	var err error
 
@@ -114,7 +119,7 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 			return err // should be more descriptive
 		}
 
-		if err = l.typ.Save(l, dirPath + "/" + strconv.Itoa(l.id)); err != nil {
+		if err = l.typ.Save(l, dirPath+"/"+strconv.Itoa(l.id)); err != nil {
 			return err // should be more descriptive
 		}
 	}
@@ -122,11 +127,13 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 	return nil
 }
 
-// 'dirPath' should be the path to the containing folder, including the name
-// 'types' and 'aux' should be maps of name of Layer to Operator | []interface{}.
-// this is why each layer is required to be named differently
+// Loads the network from a version previously saved in a directory
 //
-// when finished loading, calls SetOutputs() to finalize the network
+// The provided path should be to the containing folder, the same as it would have been to Save() the network
+// 'types' and 'aux' should be maps of name of Layer to their values
+// 'aux' is used to provide other information that may be necessary for certain constructors
+//
+// when finished, Load calls *Network.SetOutputs to finalize the network
 func Load(dirPath string, types map[string]Operator, aux map[string][]interface{}) (*Network, error) {
 	// check if the folder exists
 	if _, err := os.Stat(dirPath); err != nil {
@@ -141,7 +148,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 
 	formatErr := errors.Errorf("Can't load network, main file is incompatible")
 	sc := bufio.NewScanner(main)
-	
+
 	net := new(Network)
 	net.layersByName = make(map[string]*Layer)
 
@@ -161,7 +168,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 
 	// get list of input and output layers
 	var inputsByID, outputsByID []int
-	{	
+	{
 		if !sc.Scan() {
 			return nil, formatErr
 		}
@@ -238,7 +245,7 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 	}
 
 	defer f.Close()
-	
+
 	l := new(Layer)
 	l.hostNetwork = net
 	l.status = initialized
@@ -268,7 +275,7 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 		}
 		l.Name = sc.Text()
 		net.layersByName[l.Name] = l
-	
+
 		if !sc.Scan() {
 			return formatErr
 		}

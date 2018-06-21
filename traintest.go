@@ -5,8 +5,9 @@ import (
 	"math"
 )
 
-// returns a copy of the output values of the network, given the inputs
-// returns error if the number of given inputs doesn't match the number of inputs to the network
+// Returns a copy of the output values of the Network, given the inputs
+//
+// Returns an error if the number of given inputs doesn't match the number of inputs to the Network
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 	if len(inputs) != len(net.inputs) {
 		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
@@ -28,7 +29,11 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 	return clone, nil
 }
 
-// expects that the given CostFunc will not be nil
+// Adjusts the weights in the network, according to the provided arguments
+// if 'saveChanges' is true, the adjustments will not be implemented immediately
+//
+// 'learningRate' determines the strength of the changes
+// 'cf' is the CostFunction that will be optimized for
 func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf CostFunction, saveChanges bool) (cost float64, outs []float64, err error) {
 	outs, err = net.GetOutputs(inputs)
 	if err != nil {
@@ -61,7 +66,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	return
 }
 
-// makes any saved changes to weights
+// Updates the weights in the newtork with any previously saved changes
 func (net *Network) AddWeights() error {
 
 	for i, out := range net.outLayers {
@@ -73,6 +78,7 @@ func (net *Network) AddWeights() error {
 	return nil
 }
 
+// The simple package used to send training samples to the Network
 type Datum struct {
 	Inputs  []float64
 	Outputs []float64
@@ -82,20 +88,26 @@ func (d Datum) fits(net *Network) bool {
 	return len(d.Inputs) == len(net.inputs) && len(d.Outputs) == len(net.outputs)
 }
 
+// A wrapper for sending back the progress of the training or testing
 type Result struct {
+	// The iteration the result is being sent before
 	Iteration int
 
-	// average cost, from CostFunc
+	// Average cost, from CostFunc
 	Avg float64
 
-	// the percent correct, as per IsCorrect
+	// The percent correct, as per IsCorrect
+	// Out of 100
 	Percent float64
 
-	// the result is either from a test or a status update
+	// The result is either from a test or a status update
 	IsTest bool
 }
 
+// Simply a way to condense the large list of arguments to *Network.Train()
 type TrainArgs struct {
+	// The source for all of the training data for the Network
+	//
 	// sends a piece of data for each 'true' it is sent.
 	// both channels will be pre-made with no buffers
 	//
@@ -109,6 +121,8 @@ type TrainArgs struct {
 	// otherwise, it may deadlock
 	Data func(chan bool, chan Datum, *bool, *error)
 
+	// The source for all of the testing data for the Network
+	//
 	// effectively identical to 'Data'
 	// will only send 'false' if there has been an error
 	//
@@ -116,21 +130,23 @@ type TrainArgs struct {
 	// are no more data to test
 	TestData func(chan bool, chan Datum, *bool, *error)
 
-	// the number of testing data the network should test on before that iteration
+	// The number of testing data the network should test on before that iteration
+	// Will not test if 0
+	//
 	// if equal to nil (or not given), will never test (allowing TestData to be nil)
 	//
 	// the results of testing are sent back through Results,
 	// with IsTest = true
 	ShouldTest func(int) int
 
-	// whether or not to send back training status
+	// Whether or not to send back training status
 	// if equal to nil, will never send back data
 	//
 	// sends before training on that iteration,
 	// will not send at iteration 0 (because there has been no training)
 	SendStatus func(int) bool
 
-	// the number of training samples to be run before applying the changes to weights
+	// The number of training samples to be run before applying the changes to weights
 	// also determines the number of training samples requested from
 	//
 	// defaults to a batch size of 1 (no changes saved)
@@ -138,16 +154,16 @@ type TrainArgs struct {
 	// returns: whether or not the next iteration is the start of a batch; whether or not the network should delay changes
 	Batch func(int) (bool, bool)
 
-	// whether or not the network should keep training (will keep training if true)
+	// Whether or not the network should keep training (will keep training if true)
 	// arguments: number of iterations over individual data, previous error (cost)*
 	//
 	// *will be given NaN if no recorded previous error (iteration 0)
 	RunCondition func(int, float64) bool
 
-	// returns what the learning rate to train the network should be
+	// Returns what the learning rate to train the network should be at that iteration
 	// arguments: number of iterations over individual data, previous error (cost)*
 	//
-	// *will be given NaN if no recorded previous error (guaranteed on iteration 0)
+	// *will be given NaN on iteration 0 because of no previously recorded error
 	LearningRate func(int, float64) float64
 
 	// given outputs, targets; should return whether or not the outputs are correct
@@ -159,11 +175,11 @@ type TrainArgs struct {
 	// is not required. Defaults to SquaredError()
 	CostFunc CostFunction
 
-	// where the results of testing and status checking are sent
+	// Where the results of testing and status checking are sent
 	// can be provided as nil
 	//
-	// Train() will return error if 'Results' is nil and
-	// 'SendStatus' or 'ShouldTest' return true
+	// Train() will return error if Results is nil and
+	// SendStatus or ShouldTest return true
 	Results chan Result
 
 	// Err should not be nil, and *Err should be nil
@@ -176,6 +192,8 @@ var default_CostFunc = SquaredError(false)
 var default_IsCorrect = CorrectRound
 var default_Batch = func(iteration int) (bool, bool) { return true, false }
 
+// Trains the network, given the provided arguments.
+// For information on how changes in arguments affect how the Network trains, see TrainArgs
 func (net *Network) Train(args TrainArgs) {
 
 	canSend := true
@@ -386,9 +404,14 @@ func (net *Network) Train(args TrainArgs) {
 	return
 }
 
+// Tests the network on the provided data, using 'cf' and 'isCorrect' to return average cost, percent correct
+//
 // 'amount' is the quantity of test data that should be requested
+//
 // the responsibility is on Test() to send 'false' to data, not data to close its channel
-// returns: average cost, percent correct (out of 100)
+// for more information on 'data', see TrainArgs.TestData
+//
+// returns average cost and percent correct (out of 100)
 func (net *Network) Test(data func(chan bool, chan Datum, *bool, *error), cf CostFunction, isCorrect func([]float64, []float64) bool, amount int) (float64, float64, error) {
 
 	var fetchData chan bool = make(chan bool)
@@ -454,7 +477,8 @@ func (net *Network) Test(data func(chan bool, chan Datum, *bool, *error), cf Cos
 	return avgCost, percent, nil
 }
 
-// returns a function that satisfies TrainArgs.Data or TrainArgs.TestData
+// Returns a function that satisfies TrainArgs.Data or TrainArgs.TestData, given a list of data
+//
 // data[n] should have length 2
 // data[n][0] is inputs, data[n][1] is outputs
 //

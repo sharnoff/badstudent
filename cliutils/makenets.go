@@ -7,20 +7,23 @@ import (
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/operators/optimizers"
 
-	"fmt"
 	"bufio"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
 )
 
-// given format:
-// name
-// operator as string
-// optimizer for operator, if it needs it. There is never a blank line
-// name
-// operator
-// etc...
+// Returns the basic operators of each layer, indicated by their string representations
+// The map this returns satisfies 'types' for *badstudent.Network.Load()
+//
+// the format it reads from is:
+//	   name of layer
+//	   operator as string
+//	   optimizer for operator, if it has one. If has none, this line is skipped
+//	   name
+//	   operator
+//	   etc...
 func GetLoadTypes(r io.Reader) (map[string]badstudent.Operator, error) {
 	sc := bufio.NewScanner(r)
 
@@ -78,13 +81,11 @@ func GetLoadTypes(r io.Reader) (map[string]badstudent.Operator, error) {
 	return ops, nil
 }
 
-// Queries the given input (usually a command line) in order to create a badstudent.Network
+// Queries the given input (usually a command line) in order to create a *badstudent.Network
 //
-// given: an input method, output method
-// if 'w' is nil, MakeNet() will not output instructions
+// 'w' can be nil -- if it is, MakeNet will not output instructions
 //
-// returns the newly-constructed Network,
-// a string that satisifies 'GetLoadTypes'
+// returns the newly-constructed Network and a string that satisifies GetLoadTypes()
 func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 	interacting := (w != nil)
 
@@ -126,7 +127,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				return nil, errors.Errorf("Can't have layer with no name (is there a double space?)")
 			} else if str == `"` {
 				if inQuote {
-					outStrs = append(outStrs, quote + " ")
+					outStrs = append(outStrs, quote+" ")
 				}
 				inQuote = !inQuote
 				continue
@@ -139,7 +140,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				if starts {
 					return nil, errors.Errorf("Can't get layers, close quote present without space")
 				} else if ends {
-					outStrs = append(outStrs, quote + " " + str[ : len(str) - 1])
+					outStrs = append(outStrs, quote+" "+str[:len(str)-1])
 					inQuote = false
 					quote = "" // not actually necessary
 				} else { // neither starts nor ends
@@ -148,10 +149,10 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 			} else { // inQuote == false
 				if starts {
 					if !ends { // just starts
-						quote = str[1 :]
+						quote = str[1:]
 						inQuote = true
 					} else { // starts and ends
-						outStrs = append(outStrs, str[1 : len(str) - 1])
+						outStrs = append(outStrs, str[1:len(str)-1])
 					}
 				} else if ends { // just ends
 					return nil, errors.Errorf("Can' get layers, close quote present without start quote")
@@ -323,7 +324,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 		// given: len(inputDims), &dimension_in_struct,
 		// "formatted %d %d string to provide if the dimension sizes don't match (struct, dimSize)",
 		// "string to provide at the start of attempting to get the dimensions"
-		// 
+		//
 		// if 'dimSize' == -1, getDims will not check dimension sizes
 		//
 		// returns 'true', 'false' if the user requested to restart convolution construction
@@ -718,7 +719,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				if err == nil {
 					println("Finished making the network!")
 					// subtract 1 from the end of 'types' because we don't want the final new line
-					return net, types[ : len(types) - 1], nil
+					return net, types[:len(types)-1], nil
 				}
 
 				return nil, "", errors.Wrapf(err, "")

@@ -6,8 +6,8 @@ import (
 	"github.com/sharnoff/badstudent/utils"
 	"math/rand"
 
-	"os"
 	"encoding/json"
+	"os"
 )
 
 type neurons struct {
@@ -79,7 +79,7 @@ func (n *neurons) Save(l *badstudent.Layer, dirPath string) error {
 		f.Close()
 	}
 
-	if err = n.opt.Save(l, n, dirPath + "/opt"); err != nil {
+	if err = n.opt.Save(l, n, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -120,7 +120,7 @@ func (n *neurons) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 		}
 	}
 
-	if err = n.opt.Load(l, n, dirPath + "/opt", aux); err != nil {
+	if err = n.opt.Load(l, n, dirPath+"/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
@@ -153,7 +153,7 @@ func (n *neurons) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 			sum += l.Delta(v) * n.Weights[v][i]
 		}
 
-		add(i - start, sum)
+		add(i-start, sum)
 	}
 
 	opsPerThread, threadsPerCPU := 1, 1

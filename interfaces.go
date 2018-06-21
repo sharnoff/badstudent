@@ -58,7 +58,7 @@ type Operator interface {
 
 	// adjusts the weights of the given layer, using its deltas
 	//
-	// args: layer to adjust, the learning rate to proivde the optimizer, 
+	// args: layer to adjust, the learning rate to proivde the optimizer,
 	// whether or not the changes from Adjust() should be applied immediately or stored
 	Adjust(*Layer, float64, bool) error
 	// Adjust(l *Layer, opt Optimizer, learningRate float64, saveChanges bool) error

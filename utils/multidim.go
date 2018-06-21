@@ -1,6 +1,6 @@
 package utils
 
-// allows storage of n-dimensional slices
+// Allows storage of n-dimensional slices
 //
 // stored such that the oscillation frequency of the dimensions decreases as
 // the index in dimensions increases
@@ -19,6 +19,8 @@ type MultiDim struct {
 	Size []int
 }
 
+// Creates a new MultiDim slice wrapper
+//
 // assumes that the product of 'dims' multiplied together is equal to the length of 'base'
 // stored as: z{y{x, x}, y{x, x}}, z{y{x, x}, y{x, x}}.
 // accessed as: [x, y, z]
@@ -31,7 +33,7 @@ func NewMultiDim(dims []int) *MultiDim {
 	m.Size[0] = m.Dims[0]
 
 	for i := 1; i < len(m.Size); i++ {
-		m.Size[i] = m.Size[i - 1] * m.Dims[i]
+		m.Size[i] = m.Size[i-1] * m.Dims[i]
 	}
 
 	return m
@@ -44,25 +46,27 @@ func NewMultiDim(dims []int) *MultiDim {
 func (m *MultiDim) Index(point []int) int {
 	index := point[0]
 	for i := 1; i < len(m.Size); i++ {
-		index += point[i] * m.Size[i - 1]
+		index += point[i] * m.Size[i-1]
 	}
 
 	return index
 }
 
 // returns the multi-dimensional point leading to the given index in the base array
+//
+// assumes that the given index will be in bounds
 func (m *MultiDim) Point(index int) []int {
 	p := make([]int, len(m.Dims))
 	for i := len(p) - 1; i >= 1; i-- { // doesn't go to 0
-		p[i] = index / m.Size[i - 1]
-		index = index % m.Size[i - 1]
+		p[i] = index / m.Size[i-1]
+		index = index % m.Size[i-1]
 	}
 
 	p[0] = index
 	return p
 }
 
-// increments the given point by 1
+// Increments the given point by 1
 // assumes that len(point) = len(dims)
 //
 // if it overflows, it leaves it at the highest possible value
@@ -74,7 +78,7 @@ func (m *MultiDim) Increment(point []int) bool {
 			break
 		}
 
-		if i == len(point) - 1 {
+		if i == len(point)-1 {
 			return false
 		}
 
@@ -98,8 +102,8 @@ func (m *MultiDim) IncreaseBy(point []int, change int) bool {
 
 	for i := range point {
 		if point[i] > m.Dims[i] {
-			if i < len(point) - 1 {
-				point[i + 1] += point[i] / m.Dims[i]
+			if i < len(point)-1 {
+				point[i+1] += point[i] / m.Dims[i]
 				point[i] %= m.Dims[i]
 			} else {
 				point[i] = m.Dims[i]
