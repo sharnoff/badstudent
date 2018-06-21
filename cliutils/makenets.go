@@ -1,4 +1,4 @@
-package climanager
+package cliutils
 
 import (
 	"github.com/pkg/errors"
