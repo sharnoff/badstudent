@@ -288,7 +288,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				return nil
 			} else if sc.Text() == "list" {
 				for name := range layers {
-					printf(" - %s")
+					printf(" - %s", name)
 				}
 			}
 
