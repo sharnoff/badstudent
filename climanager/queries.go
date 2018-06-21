@@ -8,41 +8,47 @@ import (
 	"fmt"
 )
 
-// returns true if 'true', false if 'false'
-// returns error if recieves 'quit' or scanner runs out
-func QueryTF(sc *bufio.Scanner) (bool, error) {
+// returns user input of true/false, whether or not user quits
+// returns error if scanner runs out
+//
+// in case of other return states (error or quit), booleans default to 'false'
+func QueryTF(sc *bufio.Scanner) (bool, bool, error) {
 	for {
 		if !sc.Scan() {
-			return false, errors.Errorf("Scanner.Scan() failed.")
+			return false, false, errors.Errorf("Scanner.Scan() failed.")
 		}
 
 		if sc.Text() == "quit" || sc.Text() == "q" {
-			return false, errors.Errorf("Recieved quit signal.")
+			return false, true, nil
 		}
 
 		if sc.Text() == "y" || sc.Text() == "yes" {
-			return true, nil
+			return true, false, nil
 		} else if sc.Text() == "n"  || sc.Text() == "no" {
-			return false, nil
+			return false, false, nil
 		} else {
 			fmt.Print("Please enter 'y' or 'n': ")
 		}
 	}
 }
 
-// 'isValid' should return an error message if the given integer is out of bounds
-// if 'isValid' returns an empty string, that integer will be returned by QueryInt
-// the error message from 'isValid' will used as: `fmt.Print("error-message")`
+// gets an integer from user input
+// input is provided by 'sc' and the integer returned will be in the range specified by 'isValid'
 //
-// returns error if it recieves 'quit' or scanner runs out
-func QueryInt(sc *bufio.Scanner, isValid func(int) string) (int, error) {
+// 'isValid' returns an error string if the given integer is out of bounds
+// if 'isValid' returns an empty string, that integer will be returned by QueryInt
+// the error message from 'isValid' will be printed as: `fmt.Print(error-message)`
+//
+// returns 'true' only if the user quits (enters 'quit' or 'q')
+// returns an error only if input runs out -- if sc.Scan() returns 'false'
+func QueryInt(sc *bufio.Scanner, isValid func(int) string) (int, bool, error) {
 	for {
 		if !sc.Scan() {
-			return 0, errors.Errorf("Scanner.Scan() failed.")
+			return 0, false, errors.Errorf("Scanner.Scan() failed.")
 		}
 
 		if sc.Text() == "quit" || sc.Text() == "q" {
-			return 0, errors.Errorf("Recieved quit signal")
+			return 0, true, nil
 		}
 		
 		if v, err := strconv.Atoi(sc.Text()); err != nil {
@@ -50,47 +56,21 @@ func QueryInt(sc *bufio.Scanner, isValid func(int) string) (int, error) {
 		} else if errMsg := isValid(v); errMsg != "" {
 			fmt.Print(errMsg)
 		} else {
-			return v, nil
+			return v, false, nil
 		}
 	}
 }
 
-// 'isValid' should return an error message if the given string is not an option
-// if 'isValid' returns an empty string, the input string will be returned by QueryString
-// the error message from 'isValid' will be used as: `fmt.Print("error-message")`
-//
-// returns error if it recieves 'quit' or scanner runs out
-func QueryString(sc *bufio.Scanner, isValid func(string) string) (string, error) {
+// gets a float from user input
+// functionally identical to QueryInt, but for float64
+func QueryFloat(sc *bufio.Scanner, isValid func(float64) string) (float64, bool, error) {
 	for {
 		if !sc.Scan() {
-			return "", errors.Errorf("Scanner.Scan() failed.")
+			return 0, false, errors.Errorf("Scanner.Scan() failed.")
 		}
 
 		if sc.Text() == "quit" || sc.Text() == "q" {
-			return "", errors.Errorf("Recieved quit signal")
-		}
-		
-		if errMsg := isValid(sc.Text()); errMsg != "" {
-			fmt.Print(errMsg)
-		} else {
-			return sc.Text(), nil
-		}
-	}
-}
-
-// 'isValid' should return an error message if the given float is out of bounds
-// if 'isValid' returns an empty string, that float will be returned by QueryInt
-// the error message from 'isValid' will used as: `fmt.Print("error-message")`
-//
-// returns error if it recieves 'quit' or scanner runs out
-func QueryFloat(sc *bufio.Scanner, isValid func(float64) string) (float64, error) {
-	for {
-		if !sc.Scan() {
-			return 0, errors.Errorf("Scanner.Scan() failed.")
-		}
-
-		if sc.Text() == "quit" || sc.Text() == "q" {
-			return 0, errors.Errorf("Recieved quit signal")
+			return 0, true, nil
 		}
 		
 		if v, err := strconv.ParseFloat(sc.Text(), 64); err != nil {
@@ -98,7 +78,27 @@ func QueryFloat(sc *bufio.Scanner, isValid func(float64) string) (float64, error
 		} else if errMsg := isValid(v); errMsg != "" {
 			fmt.Print(errMsg)
 		} else {
-			return v, nil
+			return v, false, nil
+		}
+	}
+}
+
+// gets a string from user input
+// functionally identical to QueryInt, but for strings.
+func QueryString(sc *bufio.Scanner, isValid func(string) string) (string, bool, error) {
+	for {
+		if !sc.Scan() {
+			return "", false, errors.Errorf("Scanner.Scan() failed.")
+		}
+
+		if sc.Text() == "quit" || sc.Text() == "q" {
+			return "", true, nil
+		}
+		
+		if errMsg := isValid(sc.Text()); errMsg != "" {
+			fmt.Print(errMsg)
+		} else {
+			return sc.Text(), false, nil
 		}
 	}
 }
