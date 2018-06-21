@@ -189,15 +189,9 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 		"gradient descent": "standard, run of the mill, gradient descent. No momentum or anything fancy.",
 	}
 
-	// containted here because there is no use in other functions
+	// containted here because there is no use in other functions and there
+	// are many local variables
 	add := func() error {
-
-		help := func() {
-			println("Layer types:")
-			for name, desc := range knownOps {
-				printf("\t%s - %s\n", name, desc)
-			}
-		}
 		var l *badstudent.Layer
 		var err error
 		var name string
@@ -224,7 +218,12 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				println("Leaving layer constructor.")
 				return nil
 			} else if sc.Text() == "help" {
-				help()
+
+				println("Layer types:")
+				for name, desc := range knownOps {
+					printf("\t%s - %s\n", name, desc)
+				}
+
 				continue
 			}
 
@@ -249,7 +248,12 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					println("Leaving layer constructor.")
 					return nil
 				} else if sc.Text() == "help" {
-					help()
+
+					println("Optimizer types:")
+					for name, desc := range knownOpts {
+						printf("\t%s - %s\n", name, desc)
+					}
+
 					continue
 				}
 
@@ -272,7 +276,8 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 		}
 
 		// get inputs
-		println("Please list all layers to use as inputs (none if input layer; separate by spaces, refer to by name)")
+		println("Please list all layers to use as inputs. Use identical formatting to shell arguments.")
+		println("You may type 'list' to see a list of all current layers. To make an input layer, enter nothing.")
 		for {
 			if !sc.Scan() {
 				return errors.Errorf("Scanner.Scan() failed while waiting for input layers")
@@ -281,6 +286,10 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 			if sc.Text() == "quit" || sc.Text() == "q" {
 				println("Leaving layer constructor")
 				return nil
+			} else if sc.Text() == "list" {
+				for name := range layers {
+					printf(" - %s")
+				}
 			}
 
 			// if no inputs given
@@ -592,7 +601,9 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 			if sc.Text() == "" {
 				printf("Can't make a layer with no name. Enter a name for this layer: ")
 			} else if strings.Contains(sc.Text(), `"`) {
-				printf("Can't make layer that contains a double-quote. Enter a name for this layer: ")
+				printf("Can't make layer that contains a double-quote. Enter a differnet name for this layer: ")
+			} else if sc.Text() == "list" {
+				printf("Can't make a layer with a name of 'list'. Enter a different name for this layer: ")
 			} else {
 				name = sc.Text()
 				break
@@ -705,6 +716,7 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 		case "finish":
 			if quit, err := finish(); !quit {
 				if err == nil {
+					println("Finished making the network!")
 					// subtract 1 from the end of 'types' because we don't want the final new line
 					return net, types[ : len(types) - 1], nil
 				}
