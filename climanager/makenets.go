@@ -286,9 +286,12 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 			// if no inputs given
 			if sc.Text() == "" {
 				printf("Would you like to add an input layer? (y/n): ")
-				addInput, err := QueryTF(sc)
+				addInput, quit, err := QueryTF(sc)
 				if err != nil {
 					return errors.Wrapf(err, "")
+				} else if quit {
+					println("Exiting layer constructor.")
+					return nil
 				}
 
 				if addInput {
@@ -352,12 +355,12 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					printf(notMatch, len(*dims), dimSize)
 
 					printf("Restart construction from input dimensions? (y/n): ")
-					restart, err := QueryTF(sc)
+					restart, _, err := QueryTF(sc)
 					if err != nil {
 						return true, false, errors.Wrapf(err, "")
 					}
 
-					if restart {
+					if restart { // && !quit
 						return true, false, nil
 					} else {
 						continue
@@ -392,9 +395,14 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 
 				return ""
 			}
-			leakFactor, err = QueryFloat(sc, isValid)
+
+			var quit bool
+			leakFactor, quit, err = QueryFloat(sc, isValid)
 			if err != nil {
 				return errors.Wrapf(err, "")
+			} else if quit {
+				println("Exiting the layer constructor.")
+				return nil
 			}
 
 			fallthrough
@@ -522,15 +530,21 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 					}
 					return ""
 				}
-				args.Depth, err = QueryInt(sc, validDepth)
+				args.Depth, quit, err = QueryInt(sc, validDepth)
 				if err != nil {
 					return errors.Wrapf(err, "")
+				} else if quit {
+					println("Exiting the layer constructor.")
+					return nil
 				}
 
 				printf("Please enter whether or not to have biases (y/n): ")
-				args.Biases, err = QueryTF(sc)
+				args.Biases, quit, err = QueryTF(sc)
 				if err != nil {
 					return errors.Wrapf(err, "")
+				} else if quit {
+					println("Exiting the layer constructor.")
+					return nil
 				}
 
 				break
@@ -554,8 +568,12 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				return ""
 			}
 
-			if size, err = QueryInt(sc, isValid); err != nil {
+			var quit bool
+			if size, quit, err = QueryInt(sc, isValid); err != nil {
 				return errors.Wrapf(err, "")
+			} else if quit {
+				println("Exiting the layer constructor.")
+				return nil
 			}
 
 			op = operators.Neurons(opt)
