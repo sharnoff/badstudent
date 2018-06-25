@@ -288,9 +288,11 @@ func MakeNet(r io.Reader, w io.Writer) (*badstudent.Network, string, error) {
 				println("Leaving layer constructor")
 				return nil
 			} else if sc.Text() == "list" {
+				println("List of all current layers:")
 				for name := range layers {
-					printf(" - %s", name)
+					printf(" - %s\n", name)
 				}
+				continue
 			}
 
 			// if no inputs given
