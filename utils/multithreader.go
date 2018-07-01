@@ -21,8 +21,9 @@ func MultiThread(start, end int, f func(int), opsPerThread, threadsPerCPU int) {
 	index := start
 	var indexMux sync.Mutex
 
-	done := make(chan bool)
+	var wg sync.WaitGroup
 
+	wg.Add(numThreads)
 	for thread := 0; thread < numThreads; thread++ {
 		go func() {
 			for {
@@ -48,15 +49,11 @@ func MultiThread(start, end int, f func(int), opsPerThread, threadsPerCPU int) {
 				}
 			}
 
-			done <- true
+			wg.Done()
 		}()
 	}
 
-	numFinished := 0
-	for numFinished < numThreads {
-		<-done
-		numFinished++
-	}
+	wg.Wait()
 
 	return
 }
