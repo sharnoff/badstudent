@@ -58,7 +58,7 @@ func (l *Layer) checkOutputs() error {
 // checks the outputs of all layers in the network
 func (net *Network) checkOutputs() error {
 	for i, in := range net.inLayers {
-		if err := in.checkOutputs; err != nil {
+		if err := in.checkOutputs(); err != nil {
 			return errors.Wrapf(err, "Failed to check outputs of network input %v (#%d)\n", in, i)
 		}
 	}
@@ -89,8 +89,8 @@ func (l *Layer) inputsChanged() {
 // returns an error if the length of the provided values doesn't
 // match the size of the network inputs
 func (net *Network) SetInputs(inputs []float64) error {
-	len(inputs) != len(net.inputs) {
-		return nil, errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
+	if len(inputs) != len(net.inputs) {
+		return errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
 	}
 
 	copy(net.inputs, inputs)
@@ -133,7 +133,7 @@ func (l *Layer) evaluate() error {
 // Returns an error if it can't the given inputs to be the network's
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 	if err := net.SetInputs(inputs); err != nil {
-		return errors.Wrapf(err, "Couldn't get outputs; setting inputs failed.\n")
+		return nil, errors.Wrapf(err, "Couldn't get outputs; setting inputs failed.\n")
 	}
 
 	for i, out := range net.outLayers {
