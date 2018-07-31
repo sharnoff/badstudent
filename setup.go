@@ -96,6 +96,9 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		return errors.Errorf("Can't set outputs of network, none given")
 	}
 
+	// if setting outputs needs to be aborted, the layers should not be affected by '.isOutput'
+	// being true. This sets them back to false for those layers that may have already been
+	// switched
 	var allGood = false
 	defer func() {
 		if !allGood {
