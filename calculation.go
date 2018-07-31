@@ -25,6 +25,8 @@ const bias_value float64 = 1
 // the outputs of the network
 //
 // returns error if l.isOutput == false but len(l.outputs) == 0
+//
+// recurses towards outputs
 func (l *Layer) checkOutputs() error {
 	l.statusMux.Lock()
 	defer l.statusMux.Unlock()
@@ -53,6 +55,17 @@ func (l *Layer) checkOutputs() error {
 	return nil
 }
 
+// checks the outputs of all layers in the network
+func (net *Network) checkOutputs() error {
+	for i, in := range net.inLayers {
+		if err := in.checkOutputs; err != nil {
+			return errors.Wrapf(err, "Failed to check outputs of network input %v (#%d)\n", in, i)
+		}
+	}
+
+	return nil
+}
+
 // acts as a 'reset button' for the layer,
 // signifying that it now will need to perform its operations again
 //
@@ -70,6 +83,22 @@ func (l *Layer) inputsChanged() {
 	for _, out := range l.outputs {
 		out.inputsChanged()
 	}
+}
+
+// sets the inputs of the network to the provided values
+// returns an error if the length of the provided values doesn't
+// match the size of the network inputs
+func (net *Network) SetInputs(inputs []float64) error {
+	len(inputs) != len(net.inputs) {
+		return nil, errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
+	}
+
+	copy(net.inputs, inputs)
+	for _, in := range net.inLayers {
+		in.inputsChanged()
+	}
+
+	return nil
 }
 
 // updates the values of the layer so that they are accurate, given the inputs
@@ -99,9 +128,28 @@ func (l *Layer) evaluate() error {
 	return nil
 }
 
-// calculates the deltas for each value of the layer
+// Returns a copy of the output values of the Network, given the inputs
 //
-// calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
+// Returns an error if it can't the given inputs to be the network's
+func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
+	if err := net.SetInputs(inputs); err != nil {
+		return errors.Wrapf(err, "Couldn't get outputs; setting inputs failed.\n")
+	}
+
+	for i, out := range net.outLayers {
+		if err := out.evaluate(); err != nil {
+			return nil, errors.Wrapf(err, "Can't get outputs, network output layer %v (#%d) failed to evaluate\n", out, i)
+		}
+	}
+
+	c := make([]float64, len(net.outputs))
+	copy(c, net.outputs)
+	return c, nil
+}
+
+// Calculates the deltas for each value of the layer
+//
+// Calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
 // deltasMatter is: do the deltas of this layer actually need to be calculated, or should this
 // just pass the recursion to its outputs
 func (l *Layer) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error, deltasMatter bool) error {
@@ -244,6 +292,18 @@ func (l *Layer) addWeights() error {
 	for i, in := range l.inputs {
 		if err := in.addWeights(); err != nil {
 			return errors.Wrapf(err, "Failed to recurse to %v (input %d) after adding weights of layer %v\n", in, i, l)
+		}
+	}
+
+	return nil
+}
+
+// Updates the weights in the newtork with any previously delayed changes
+func (net *Network) AddWeights() error {
+
+	for i, out := range net.outLayers {
+		if err := out.addWeights(); err != nil {
+			return errors.Wrapf(err, "Couldn't add weights of network, output layer %v (#%d) failed to add weights\n", out, i)
 		}
 	}
 

@@ -129,10 +129,8 @@ func (net *Network) SetOutputs(outputs ...*Layer) error {
 		out.isOutput = true
 	}
 
-	for i, in := range net.inLayers {
-		if err := in.checkOutputs(); err != nil {
-			return errors.Wrapf(err, "Can't set outputs of network, checking outputs of %v (input %d) failed\n", in, i)
-		}
+	if err := net.checkOutputs(); err != nil {
+		return err
 	}
 
 	allGood = true

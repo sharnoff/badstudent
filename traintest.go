@@ -5,30 +5,6 @@ import (
 	"math"
 )
 
-// Returns a copy of the output values of the Network, given the inputs
-//
-// Returns an error if the number of given inputs doesn't match the number of inputs to the Network
-func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
-	if len(inputs) != len(net.inputs) {
-		return nil, errors.Errorf("Can't get outputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
-	}
-
-	copy(net.inputs, inputs)
-	for _, in := range net.inLayers {
-		in.inputsChanged()
-	}
-
-	for i, out := range net.outLayers {
-		if err := out.evaluate(); err != nil {
-			return nil, errors.Wrapf(err, "Can't get outputs, network output layer %v (#%d) failed to evaluate\n", out, i)
-		}
-	}
-
-	clone := make([]float64, len(net.outputs))
-	copy(clone, net.outputs)
-	return clone, nil
-}
-
 // Adjusts the weights in the network, according to the provided arguments
 // if 'saveChanges' is true, the adjustments will not be implemented immediately
 //
@@ -64,18 +40,6 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	}
 
 	return
-}
-
-// Updates the weights in the newtork with any previously saved changes
-func (net *Network) AddWeights() error {
-
-	for i, out := range net.outLayers {
-		if err := out.addWeights(); err != nil {
-			return errors.Wrapf(err, "Couldn't add weights of network, output layer %v (#%d) failed to add weights\n", out, i)
-		}
-	}
-
-	return nil
 }
 
 // The simple package used to send training samples to the Network
