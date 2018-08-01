@@ -16,28 +16,28 @@ func Logistic() logistic {
 	return logistic(0)
 }
 
-func (t logistic) Init(l *badstudent.Layer) error {
-	if l.Size() != l.NumInputs() {
-		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs (%d != %d)", l.Size(), l.NumInputs())
+func (t logistic) Init(n *badstudent.Node) error {
+	if n.Size() != n.NumInputs() {
+		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
 
 	return nil
 }
 
-func (t logistic) Save(l *badstudent.Layer, dirPath string) error {
+func (t logistic) Save(n *badstudent.Node, dirPath string) error {
 	return nil
 }
 
-func (t logistic) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
-	if l.Size() != l.NumInputs() {
-		return errors.Errorf("Can't load logistic Operator, does not have same number of values as inputs (%d != %d)", l.Size(), l.NumInputs())
+func (t logistic) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+	if n.Size() != n.NumInputs() {
+		return errors.Errorf("Can't load logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
 
 	return nil
 }
 
-func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
-	inputs := l.CopyOfInputs()
+func (t logistic) Evaluate(n *badstudent.Node, values []float64) error {
+	inputs := n.CopyOfInputs()
 
 	f := func(i int) {
 		values[i] = 0.5 + 0.5*math.Tanh(0.5*inputs[i])
@@ -51,10 +51,10 @@ func (t logistic) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+func (t logistic) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
 
 	f := func(i int) {
-		add(i-start, l.Delta(i)*l.Value(i)*(1-l.Value(i)))
+		add(i-start, n.Delta(i) * n.Value(i) * (1 - n.Value(i)))
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
@@ -65,14 +65,14 @@ func (t logistic) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 	return nil
 }
 
-func (t logistic) CanBeAdjusted(l *badstudent.Layer) bool {
+func (t logistic) CanBeAdjusted(n *badstudent.Node) bool {
 	return false
 }
 
-func (t logistic) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
+func (t logistic) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (t logistic) AddWeights(l *badstudent.Layer) error {
+func (t logistic) AddWeights(n *badstudent.Node) error {
 	return nil
 }

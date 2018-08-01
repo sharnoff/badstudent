@@ -21,13 +21,13 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 		return cf.Deriv(net.outputs, targets, start, end, add)
 	}
 
-	for i, in := range net.inLayers {
+	for i, in := range net.inNodes {
 		if err = in.getDeltas(rangeCostDeriv, false); err != nil { // deltasMatter = false
 			err = errors.Wrapf(err, "Couldn't correct network, getting deltas of network input %v (#%d) failed\n", in, i)
 		}
 	}
 
-	for i, out := range net.outLayers {
+	for i, out := range net.outNodes {
 		if err = out.adjust(learningRate, saveChanges); err != nil {
 			err = errors.Wrapf(err, "Couldn't correct network, adjusting failed for output %v (#%d)\n", out, i)
 		}

@@ -17,7 +17,7 @@ import (
 type ConvArgs struct {
 	// The dimensions of the output -- usually will be {width, height, depth...}
 	// Init() will return error if the product of 'Dims' multiplied together (with Depth, too) doesn't
-	// equal the number of values in the layer - *Layer.Size()
+	// equal the number of values in the node - *Node.Size()
 	//
 	// should not include extra dimensions gained from 'Depth'
 	// should also be the same length as 'InputDims'
@@ -28,7 +28,7 @@ type ConvArgs struct {
 
 	// The dimensions of the input
 	// Init() checks that the product of 'InputDims' multiplied together equals
-	// the total number of input values to the Layer
+	// the total number of input values to the Node
 	InputDims []int
 
 	// The size of the filter in each dimension
@@ -123,7 +123,7 @@ func Convolution(conv *ConvArgs, opt Optimizer) *convolution {
 	return c
 }
 
-func (c *convolution) Init(l *badstudent.Layer) error {
+func (c *convolution) Init(n *badstudent.Node) error {
 	numDims := len(c.Outs.Dims)
 
 	// set defauts
@@ -147,58 +147,58 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 	// error checking
 	{
 		if len(c.Outs.Dims) == 0 {
-			return errors.Errorf("Can't Init() convolutional layer, len(Dims) == 0")
+			return errors.Errorf("Can't Init() convolutional node, len(Dims) == 0")
 		}
 		if len(c.Ins.Dims) == 0 {
-			return errors.Errorf("Can't Init() convolutional layer, len(InputDims) == 0")
+			return errors.Errorf("Can't Init() convolutional node, len(InputDims) == 0")
 		}
 		if len(c.Ins.Dims) != numDims {
-			return errors.Errorf("Can't Init() convolutional layer, len(InputDims) != len(Dims). Note: Depth should not be included in dimensions. (len(%v) != len(%v))", c.Ins.Dims, c.Outs.Dims)
+			return errors.Errorf("Can't Init() convolutional node, len(InputDims) != len(Dims). Note: Depth should not be included in dimensions. (len(%v) != len(%v))", c.Ins.Dims, c.Outs.Dims)
 		}
 		if len(c.Filter.Dims) != numDims {
-			return errors.Errorf("Can't Init() convolutional layer, len(Filter) != len(Dims) (len(%v) != len(%v))", c.Filter.Dims, c.Outs.Dims)
+			return errors.Errorf("Can't Init() convolutional node, len(Filter) != len(Dims) (len(%v) != len(%v))", c.Filter.Dims, c.Outs.Dims)
 		}
 		if len(c.Stride) != numDims {
-			return errors.Errorf("Can't Init() convolutional layer, len(Stride) != len(Dims) (len(%v) != len(%v))", c.Stride, c.Outs.Dims)
+			return errors.Errorf("Can't Init() convolutional node, len(Stride) != len(Dims) (len(%v) != len(%v))", c.Stride, c.Outs.Dims)
 		}
 		if len(c.ZeroPadding) != numDims {
-			return errors.Errorf("Can't Init() convolutional layer, len(ZeroPadding) != len(Dims) (len(%v) != len(%v))", c.ZeroPadding, c.Outs.Dims)
+			return errors.Errorf("Can't Init() convolutional node, len(ZeroPadding) != len(Dims) (len(%v) != len(%v))", c.ZeroPadding, c.Outs.Dims)
 		}
 
 		// check for bad values
 		for i, d := range c.Outs.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() convolutional layer, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() convolutional node, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range c.Ins.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() convolutional layer, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() convolutional node, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range c.Filter.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() convolutional layer, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() convolutional node, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range c.Stride {
 			if d < 1 {
-				return errors.Errorf("Can't Init() convolutional layer, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() convolutional node, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range c.ZeroPadding {
 			if d < 0 {
-				return errors.Errorf("Can't Init() convolutional layer, ZeroPadding[%d] = %d. Can't have negative padding", i, d)
+				return errors.Errorf("Can't Init() convolutional node, ZeroPadding[%d] = %d. Can't have negative padding", i, d)
 			}
 		}
 
-		// check that the size of the layer is equal to the product of dimensions * depth
+		// check that the size of the node is equal to the product of dimensions * depth
 		size := 1
 		for _, d := range c.Outs.Dims {
 			size *= d
 		}
-		if size*c.Depth != l.Size() {
-			return errors.Errorf("Can't Init() convolutional layer, volume of dimensions and depth is not equal to layer size (%d * %d != %d)", size, c.Depth, l.Size())
+		if size * c.Depth != n.Size() {
+			return errors.Errorf("Can't Init() convolutional node, volume of dimensions and depth is not equal to node size (%d * %d != %d)", size, c.Depth, n.Size())
 		}
 
 		// check that the size of the inputs is equal to the product of input dimensions
@@ -206,8 +206,8 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 		for _, d := range c.Ins.Dims {
 			inputSize *= d
 		}
-		if inputSize != l.NumInputs() {
-			return errors.Errorf("Can't Init() convolutional layer, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, l.NumInputs())
+		if inputSize != n.NumInputs() {
+			return errors.Errorf("Can't Init() convolutional node, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, n.NumInputs())
 		}
 
 		// check that the dimensions of the output volume add up
@@ -217,9 +217,9 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 			numerator := c.Ins.Dims[i] - c.Filter.Dims[i] + (2 * c.ZeroPadding[i])
 
 			if numerator%c.Stride[i] != 0 {
-				return errors.Errorf("Can't Init() convolutional layer, stride does not fit Dims[%d] (%d %% %d != 0)", i, numerator, c.Stride[i])
+				return errors.Errorf("Can't Init() convolutional node, stride does not fit Dims[%d] (%d %% %d != 0)", i, numerator, c.Stride[i])
 			} else if c.Outs.Dims[i] != numerator/c.Stride[i]+1 {
-				return errors.Errorf("Can't Init() convolutional layer, expected Dims[%d] does not match given (%d != %d)", i, numerator/c.Stride[i]+1, c.Outs.Dims[i])
+				return errors.Errorf("Can't Init() convolutional node, expected Dims[%d] does not match given (%d != %d)", i, numerator/c.Stride[i]+1, c.Outs.Dims[i])
 			}
 		}
 	}
@@ -235,8 +235,8 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 			filterSize++
 		}
 
-		c.Weights = make([]float64, filterSize*l.Size())
-		c.Changes = make([]float64, filterSize*l.Size())
+		c.Weights = make([]float64, filterSize * n.Size())
+		c.Changes = make([]float64, filterSize * n.Size())
 
 		// initialize weights
 		for i := range c.Weights {
@@ -248,7 +248,7 @@ func (c *convolution) Init(l *badstudent.Layer) error {
 	return nil
 }
 
-func (c *convolution) Save(l *badstudent.Layer, dirPath string) error {
+func (c *convolution) Save(n *badstudent.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -274,7 +274,7 @@ func (c *convolution) Save(l *badstudent.Layer, dirPath string) error {
 		f.Close()
 	}
 
-	if err = c.opt.Save(l, c, dirPath+"/opt"); err != nil {
+	if err = c.opt.Save(n, c, dirPath + "/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -283,7 +283,7 @@ func (c *convolution) Save(l *badstudent.Layer, dirPath string) error {
 
 // does not check if the loaded data is intact
 // only needs to be provided an empty struct; everything else will be filled in
-func (c *convolution) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+func (c *convolution) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -306,15 +306,15 @@ func (c *convolution) Load(l *badstudent.Layer, dirPath string, aux []interface{
 		f.Close()
 	}
 
-	if err = c.opt.Load(l, c, dirPath+"/opt", aux); err != nil {
+	if err = c.opt.Load(n, c, dirPath+"/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
 	return nil
 }
 
-func (c *convolution) Evaluate(l *badstudent.Layer, values []float64) error {
-	inputs := l.CopyOfInputs()
+func (c *convolution) Evaluate(n *badstudent.Node, values []float64) error {
+	inputs := n.CopyOfInputs()
 
 	// dimensions, with depth appended to the end
 	depthDims := make([]int, len(c.Outs.Dims)+1)
@@ -398,7 +398,7 @@ func (c *convolution) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+func (c *convolution) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
 
 	filterSize := 1
 	for _, d := range c.Filter.Dims {
@@ -421,17 +421,17 @@ func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), s
 		f_init := make([]int, len(c.Filter.Dims))
 
 		for i := range out_init {
+			l := n.NumInputs()
 			n := input[i]
 			f := c.Filter.Dims[i]
-			l := l.NumInputs()
 			p := c.ZeroPadding[i]
 			s := c.Stride[i]
 
 			r := n + f - l - p
 			o := (n + p) / s
 
-			if s*o+f >= l+(2*p) {
-				if r%s != 0 {
+			if s * o + f >= l + (2 * p) {
+				if r % s != 0 {
 					out_init[i] = o - (r / s) - 1
 				} else {
 					out_init[i] = o - (r / s)
@@ -463,7 +463,7 @@ func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), s
 
 			// find output value delta
 			outIndex := c.Outs.Index(out)
-			delta := l.Delta(outIndex)
+			delta := n.Delta(outIndex)
 			// for each depth
 			for depth := 0; depth < c.Depth; depth++ {
 				weight := c.Weights[(depth*depthMod)+(outIndex*filterSize)+c.Filter.Index(f)]
@@ -501,12 +501,12 @@ func (c *convolution) InputDeltas(l *badstudent.Layer, add func(int, float64), s
 	return nil
 }
 
-func (c *convolution) CanBeAdjusted(l *badstudent.Layer) bool {
+func (c *convolution) CanBeAdjusted(n *badstudent.Node) bool {
 	return true
 }
 
-func (c *convolution) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
-	inputs := l.CopyOfInputs()
+func (c *convolution) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+	inputs := n.CopyOfInputs()
 
 	// either 'c.Weights' or 'c.Changes'
 	targets := c.Changes
@@ -522,7 +522,7 @@ func (c *convolution) Adjust(l *badstudent.Layer, learningRate float64, saveChan
 		filterSize++
 	}
 
-	depthMod := l.Size() / c.Depth
+	depthMod := n.Size() / c.Depth
 
 	grad := func(index int) float64 {
 		index %= depthMod
@@ -532,7 +532,7 @@ func (c *convolution) Adjust(l *badstudent.Layer, learningRate float64, saveChan
 
 		// if the given weight is a bias
 		if index == filterSize-1 && c.Biases {
-			return conv_bias_value * l.Delta(outIndex)
+			return conv_bias_value * n.Delta(outIndex)
 		}
 
 		f := c.Filter.Point(index)
@@ -544,25 +544,25 @@ func (c *convolution) Adjust(l *badstudent.Layer, learningRate float64, saveChan
 
 			// if it's outside the bounds
 			if ins[i] < 0 || ins[i] >= c.Ins.Dims[i] {
-				return zeroPadding_value * l.Delta(outIndex)
+				return zeroPadding_value * n.Delta(outIndex)
 			}
 		}
 
-		return inputs[c.Ins.Index(ins)] * l.Delta(outIndex)
+		return inputs[c.Ins.Index(ins)] * n.Delta(outIndex)
 	}
 
 	add := func(index int, addend float64) {
 		targets[index] += addend
 	}
 
-	if err := c.opt.Run(l, l.Size(), grad, add, learningRate); err != nil {
-		return errors.Wrapf(err, "Couldn't adjust Operator for layer %v, running optimizer failed\n", l)
+	if err := c.opt.Run(n, n.Size(), grad, add, learningRate); err != nil {
+		return errors.Wrapf(err, "Couldn't adjust Operator for node %v, running optimizer failed\n", n)
 	}
 
 	return nil
 }
 
-func (c *convolution) AddWeights(l *badstudent.Layer) error {
+func (c *convolution) AddWeights(n *badstudent.Node) error {
 	for i := range c.Weights {
 		c.Weights[i] += c.Changes[i]
 	}

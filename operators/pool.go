@@ -13,7 +13,7 @@ import (
 type PoolArgs struct {
 	// The dimensions of the output -- usually will be {width, height, depth...}
 	// Init() will return error if the product of 'Dims' multiplied together doesn't
-	// equal the number of values in the layer - *Layer.Size()
+	// equal the number of values in the node - *Node.Size()
 	//
 	// should be the same length as 'InputDims'
 	//
@@ -22,7 +22,7 @@ type PoolArgs struct {
 
 	// The dimensions of the input
 	// Init() checks that the product of 'InputDims' multiplied together equals
-	// the total number of input values to the Layer
+	// the total number of input values to the Node
 	InputDims []int
 
 	// The size of the filter in each dimension
@@ -96,7 +96,7 @@ func LeakyMaxPool(args *PoolArgs, leakFactor float64) *leakyMaxPool {
 // AvgPool:
 // ***************************************************
 
-func (a *avgPool) Init(l *badstudent.Layer) error {
+func (a *avgPool) Init(n *badstudent.Node) error {
 
 	numDims := len(a.Outs.Dims)
 
@@ -111,50 +111,50 @@ func (a *avgPool) Init(l *badstudent.Layer) error {
 	// error checking
 	{
 		if len(a.Outs.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(Dims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(Dims) == 0")
 		}
 		if len(a.Ins.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(InputDims) == 0")
 		}
 		if len(a.Ins.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) != len(Dims) (len(%v) != len(%v))", a.Ins.Dims, a.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(InputDims) != len(Dims) (len(%v) != len(%v))", a.Ins.Dims, a.Outs.Dims)
 		}
 		if len(a.Filter.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Filter) != len(Dims) (len(%v) != len(%v))", a.Filter.Dims, a.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Filter) != len(Dims) (len(%v) != len(%v))", a.Filter.Dims, a.Outs.Dims)
 		}
 		if len(a.Stride) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Stride) != len(Dims) (len(%v) != len(%v))", a.Stride, a.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Stride) != len(Dims) (len(%v) != len(%v))", a.Stride, a.Outs.Dims)
 		}
 
 		// check for bad values
 		for i, d := range a.Outs.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range a.Ins.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range a.Filter.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range a.Stride {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 
-		// check that the size of the layer is equal to the product of dimensions
+		// check that the size of the node is equal to the product of dimensions
 		size := 1
 		for _, d := range a.Outs.Dims {
 			size *= d
 		}
-		if size != l.Size() {
-			return errors.Errorf("Can't Init() pool layer, volume of dimensions is not equal to layer size (%d != %d)", size, l.Size())
+		if size != n.Size() {
+			return errors.Errorf("Can't Init() pool node, volume of dimensions is not equal to node size (%d != %d)", size, n.Size())
 		}
 
 		// check that the size fo the inputs is equal to the product of input dimensions
@@ -162,8 +162,8 @@ func (a *avgPool) Init(l *badstudent.Layer) error {
 		for _, d := range a.Ins.Dims {
 			inputSize *= d
 		}
-		if inputSize != l.NumInputs() {
-			return errors.Errorf("Can't Init() pool layer, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, l.NumInputs())
+		if inputSize != n.NumInputs() {
+			return errors.Errorf("Can't Init() pool node, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, n.NumInputs())
 		}
 
 		// check that the dimensions of the output volume add up
@@ -173,9 +173,9 @@ func (a *avgPool) Init(l *badstudent.Layer) error {
 			numerator := a.Ins.Dims[i] - a.Filter.Dims[i]
 
 			if numerator%a.Stride[i] != 0 {
-				return errors.Errorf("Can't Init() pool layer, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, a.Ins.Dims[i], a.Filter.Dims[i], a.Stride[i])
+				return errors.Errorf("Can't Init() pool node, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, a.Ins.Dims[i], a.Filter.Dims[i], a.Stride[i])
 			} else if a.Outs.Dims[i] != numerator/a.Stride[i]+1 {
-				return errors.Errorf("Can't Init() pool layer, expected Dims[%d] does not match given (%d != %d)", i, numerator/a.Stride[i]+1, a.Outs.Dims[i])
+				return errors.Errorf("Can't Init() pool node, expected Dims[%d] does not match given (%d != %d)", i, numerator/a.Stride[i]+1, a.Outs.Dims[i])
 			}
 		}
 	}
@@ -183,7 +183,7 @@ func (a *avgPool) Init(l *badstudent.Layer) error {
 	return nil
 }
 
-func (a *avgPool) Save(l *badstudent.Layer, dirPath string) error {
+func (a *avgPool) Save(n *badstudent.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -203,7 +203,7 @@ func (a *avgPool) Save(l *badstudent.Layer, dirPath string) error {
 	return nil
 }
 
-func (a *avgPool) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+func (a *avgPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -220,8 +220,8 @@ func (a *avgPool) Load(l *badstudent.Layer, dirPath string, aux []interface{}) e
 	return nil
 }
 
-func (a *avgPool) Evaluate(l *badstudent.Layer, values []float64) error {
-	inputs := l.CopyOfInputs()
+func (a *avgPool) Evaluate(n *badstudent.Node, values []float64) error {
+	inputs := n.CopyOfInputs()
 
 	filterSize := 1
 	for _, d := range a.Filter.Dims {
@@ -253,7 +253,7 @@ func (a *avgPool) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-func (a *avgPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+func (a *avgPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
 
 	filterSize := 1
 	for _, d := range a.Filter.Dims {
@@ -270,9 +270,9 @@ func (a *avgPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 		f_init := make([]int, len(a.Filter.Dims))
 
 		for i := range out_init {
+			l := n.NumInputs()
 			n := input[i]
 			f := a.Filter.Dims[i]
-			l := l.NumInputs()
 			s := a.Stride[i]
 
 			r := n + f - l
@@ -310,11 +310,11 @@ func (a *avgPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 			}
 
 			// add delta to sum
-			if a.Outs.Index(out) >= l.Size() || a.Outs.Index(out) < 0 {
+			if a.Outs.Index(out) >= n.Size() || a.Outs.Index(out) < 0 {
 				fmt.Println(out, out_init, a.Outs.Index(out))
 			}
 
-			sum += l.Delta(a.Outs.Index(out))
+			sum += n.Delta(a.Outs.Index(out))
 
 			// increment:
 			// for each value in f
@@ -345,15 +345,15 @@ func (a *avgPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start
 	return nil
 }
 
-func (a *avgPool) CanBeAdjusted(l *badstudent.Layer) bool {
+func (a *avgPool) CanBeAdjusted(n *badstudent.Node) bool {
 	return false
 }
 
-func (a *avgPool) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
+func (a *avgPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (a *avgPool) AddWeights(l *badstudent.Layer) error {
+func (a *avgPool) AddWeights(n *badstudent.Node) error {
 	return nil
 }
 
@@ -361,7 +361,7 @@ func (a *avgPool) AddWeights(l *badstudent.Layer) error {
 // MaxPool:
 // ***************************************************
 
-func (mp *maxPool) Init(l *badstudent.Layer) error {
+func (mp *maxPool) Init(n *badstudent.Node) error {
 
 	numDims := len(mp.Outs.Dims)
 
@@ -376,50 +376,50 @@ func (mp *maxPool) Init(l *badstudent.Layer) error {
 	// error checking
 	{
 		if len(mp.Outs.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(Dims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(Dims) == 0")
 		}
 		if len(mp.Ins.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(InputDims) == 0")
 		}
 		if len(mp.Ins.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) != len(Dims) (len(%v) != len(%v))", mp.Ins.Dims, mp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(InputDims) != len(Dims) (len(%v) != len(%v))", mp.Ins.Dims, mp.Outs.Dims)
 		}
 		if len(mp.Filter.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Filter) != len(Dims) (len(%v) != len(%v))", mp.Filter.Dims, mp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Filter) != len(Dims) (len(%v) != len(%v))", mp.Filter.Dims, mp.Outs.Dims)
 		}
 		if len(mp.Stride) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Stride) != len(Dims) (len(%v) != len(%v))", mp.Stride, mp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Stride) != len(Dims) (len(%v) != len(%v))", mp.Stride, mp.Outs.Dims)
 		}
 
 		// check for bad values
 		for i, d := range mp.Outs.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range mp.Ins.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range mp.Filter.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range mp.Stride {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 
-		// check that the size of the layer is equal to the product of dimensions
+		// check that the size of the node is equal to the product of dimensions
 		size := 1
 		for _, d := range mp.Outs.Dims {
 			size *= d
 		}
-		if size != l.Size() {
-			return errors.Errorf("Can't Init() pool layer, volume of dimensions is not equal to layer size (%d != %d)", size, l.Size())
+		if size != n.Size() {
+			return errors.Errorf("Can't Init() pool node, volume of dimensions is not equal to node size (%d != %d)", size, n.Size())
 		}
 
 		// check that the size fo the inputs is equal to the product of input dimensions
@@ -427,8 +427,8 @@ func (mp *maxPool) Init(l *badstudent.Layer) error {
 		for _, d := range mp.Ins.Dims {
 			inputSize *= d
 		}
-		if inputSize != l.NumInputs() {
-			return errors.Errorf("Can't Init() pool layer, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, l.NumInputs())
+		if inputSize != n.NumInputs() {
+			return errors.Errorf("Can't Init() pool node, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, n.NumInputs())
 		}
 
 		// check that the dimensions of the output volume add up
@@ -438,9 +438,9 @@ func (mp *maxPool) Init(l *badstudent.Layer) error {
 			numerator := mp.Ins.Dims[i] - mp.Filter.Dims[i]
 
 			if numerator%mp.Stride[i] != 0 {
-				return errors.Errorf("Can't Init() pool layer, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, mp.Ins.Dims[i], mp.Filter.Dims[i], mp.Stride[i])
+				return errors.Errorf("Can't Init() pool node, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, mp.Ins.Dims[i], mp.Filter.Dims[i], mp.Stride[i])
 			} else if mp.Outs.Dims[i] != numerator/mp.Stride[i]+1 {
-				return errors.Errorf("Can't Init() pool layer, expected Dims[%d] does not match given (%d != %d)", i, numerator/mp.Stride[i]+1, mp.Outs.Dims[i])
+				return errors.Errorf("Can't Init() pool node, expected Dims[%d] does not match given (%d != %d)", i, numerator/mp.Stride[i]+1, mp.Outs.Dims[i])
 			}
 		}
 	}
@@ -448,7 +448,7 @@ func (mp *maxPool) Init(l *badstudent.Layer) error {
 	return nil
 }
 
-func (mp *maxPool) Save(l *badstudent.Layer, dirPath string) error {
+func (mp *maxPool) Save(n *badstudent.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -468,7 +468,7 @@ func (mp *maxPool) Save(l *badstudent.Layer, dirPath string) error {
 	return nil
 }
 
-func (mp *maxPool) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+func (mp *maxPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -485,8 +485,8 @@ func (mp *maxPool) Load(l *badstudent.Layer, dirPath string, aux []interface{}) 
 	return nil
 }
 
-func (mp *maxPool) Evaluate(l *badstudent.Layer, values []float64) error {
-	inputs := l.CopyOfInputs()
+func (mp *maxPool) Evaluate(n *badstudent.Node, values []float64) error {
+	inputs := n.CopyOfInputs()
 
 	filterSize := 1
 	for _, d := range mp.Filter.Dims {
@@ -530,7 +530,7 @@ func (mp *maxPool) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-func (mp *maxPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+func (mp *maxPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
 
 	sendDelta := func(inputIndex int) {
 		input := mp.Ins.Point(inputIndex)
@@ -542,9 +542,9 @@ func (mp *maxPool) InputDeltas(l *badstudent.Layer, add func(int, float64), star
 		f_init := make([]int, len(mp.Filter.Dims))
 
 		for i := range out_init {
+			l := n.NumInputs()
 			n := input[i]
 			f := mp.Filter.Dims[i]
-			l := l.NumInputs()
 			s := mp.Stride[i]
 
 			r := n + f - l
@@ -584,7 +584,7 @@ func (mp *maxPool) InputDeltas(l *badstudent.Layer, add func(int, float64), star
 			// add delta if it's used
 			outIndex := mp.Outs.Index(out)
 			if mp.switches[outIndex] == inputIndex {
-				sum += l.Delta(outIndex)
+				sum += n.Delta(outIndex)
 			}
 
 			// increment:
@@ -616,15 +616,15 @@ func (mp *maxPool) InputDeltas(l *badstudent.Layer, add func(int, float64), star
 	return nil
 }
 
-func (mp *maxPool) CanBeAdjusted(l *badstudent.Layer) bool {
+func (mp *maxPool) CanBeAdjusted(n *badstudent.Node) bool {
 	return false
 }
 
-func (mp *maxPool) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
+func (mp *maxPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (mp *maxPool) AddWeights(l *badstudent.Layer) error {
+func (mp *maxPool) AddWeights(n *badstudent.Node) error {
 	return nil
 }
 
@@ -632,7 +632,7 @@ func (mp *maxPool) AddWeights(l *badstudent.Layer) error {
 // LeakyMaxPool:
 // ***************************************************
 
-func (lmp *leakyMaxPool) Init(l *badstudent.Layer) error {
+func (lmp *leakyMaxPool) Init(n *badstudent.Node) error {
 
 	numDims := len(lmp.Outs.Dims)
 
@@ -647,50 +647,50 @@ func (lmp *leakyMaxPool) Init(l *badstudent.Layer) error {
 	// error checking
 	{
 		if len(lmp.Outs.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(Dims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(Dims) == 0")
 		}
 		if len(lmp.Ins.Dims) == 0 {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) == 0")
+			return errors.Errorf("Can't Init() pool node, len(InputDims) == 0")
 		}
 		if len(lmp.Ins.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(InputDims) != len(Dims) (len(%v) != len(%v))", lmp.Ins.Dims, lmp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(InputDims) != len(Dims) (len(%v) != len(%v))", lmp.Ins.Dims, lmp.Outs.Dims)
 		}
 		if len(lmp.Filter.Dims) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Filter) != len(Dims) (len(%v) != len(%v))", lmp.Filter.Dims, lmp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Filter) != len(Dims) (len(%v) != len(%v))", lmp.Filter.Dims, lmp.Outs.Dims)
 		}
 		if len(lmp.Stride) != numDims {
-			return errors.Errorf("Can't Init() pool layer, len(Stride) != len(Dims) (len(%v) != len(%v))", lmp.Stride, lmp.Outs.Dims)
+			return errors.Errorf("Can't Init() pool node, len(Stride) != len(Dims) (len(%v) != len(%v))", lmp.Stride, lmp.Outs.Dims)
 		}
 
 		// check for bad values
 		for i, d := range lmp.Outs.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Dims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range lmp.Ins.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, InputDims[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range lmp.Filter.Dims {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Filter[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 		for i, d := range lmp.Stride {
 			if d < 1 {
-				return errors.Errorf("Can't Init() pool layer, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
+				return errors.Errorf("Can't Init() pool node, Stride[%d] = %d. All dimension values should be ≥ 1", i, d)
 			}
 		}
 
-		// check that the size of the layer is equal to the product of dimensions
+		// check that the size of the node is equal to the product of dimensions
 		size := 1
 		for _, d := range lmp.Outs.Dims {
 			size *= d
 		}
-		if size != l.Size() {
-			return errors.Errorf("Can't Init() pool layer, volume of dimensions is not equal to layer size (%d != %d)", size, l.Size())
+		if size != n.Size() {
+			return errors.Errorf("Can't Init() pool node, volume of dimensions is not equal to node size (%d != %d)", size, n.Size())
 		}
 
 		// check that the size fo the inputs is equal to the product of input dimensions
@@ -698,8 +698,8 @@ func (lmp *leakyMaxPool) Init(l *badstudent.Layer) error {
 		for _, d := range lmp.Ins.Dims {
 			inputSize *= d
 		}
-		if inputSize != l.NumInputs() {
-			return errors.Errorf("Can't Init() pool layer, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, l.NumInputs())
+		if inputSize != n.NumInputs() {
+			return errors.Errorf("Can't Init() pool node, product of input dimensions is not equal to number of inputs (%d != %d)", inputSize, n.NumInputs())
 		}
 
 		// check that the dimensions of the output volume add up
@@ -709,9 +709,9 @@ func (lmp *leakyMaxPool) Init(l *badstudent.Layer) error {
 			numerator := lmp.Ins.Dims[i] - lmp.Filter.Dims[i]
 
 			if numerator%lmp.Stride[i] != 0 {
-				return errors.Errorf("Can't Init() pool layer, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, lmp.Ins.Dims[i], lmp.Filter.Dims[i], lmp.Stride[i])
+				return errors.Errorf("Can't Init() pool node, stride does not fit Dims[%d] and filter ((%d - %d) %% %d != 0)", i, lmp.Ins.Dims[i], lmp.Filter.Dims[i], lmp.Stride[i])
 			} else if lmp.Outs.Dims[i] != numerator/lmp.Stride[i]+1 {
-				return errors.Errorf("Can't Init() pool layer, expected Dims[%d] does not match given (%d != %d)", i, numerator/lmp.Stride[i]+1, lmp.Outs.Dims[i])
+				return errors.Errorf("Can't Init() pool node, expected Dims[%d] does not match given (%d != %d)", i, numerator/lmp.Stride[i]+1, lmp.Outs.Dims[i])
 			}
 		}
 
@@ -721,14 +721,14 @@ func (lmp *leakyMaxPool) Init(l *badstudent.Layer) error {
 			filterSize *= d
 		}
 		if filterSize == 1 { // we know that everything is >= 1
-			return errors.Errorf("Can't Init() pool layer, filter size must be > 1 (product of: %v)", lmp.Filter.Dims)
+			return errors.Errorf("Can't Init() pool node, filter size must be > 1 (product of: %v)", lmp.Filter.Dims)
 		}
 	}
 
 	return nil
 }
 
-func (lmp *leakyMaxPool) Save(l *badstudent.Layer, dirPath string) error {
+func (lmp *leakyMaxPool) Save(n *badstudent.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -748,7 +748,7 @@ func (lmp *leakyMaxPool) Save(l *badstudent.Layer, dirPath string) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) Load(l *badstudent.Layer, dirPath string, aux []interface{}) error {
+func (lmp *leakyMaxPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -765,9 +765,9 @@ func (lmp *leakyMaxPool) Load(l *badstudent.Layer, dirPath string, aux []interfa
 	return nil
 }
 
-func (lmp *leakyMaxPool) Evaluate(l *badstudent.Layer, values []float64) error {
+func (lmp *leakyMaxPool) Evaluate(n *badstudent.Node, values []float64) error {
 
-	inputs := l.CopyOfInputs()
+	inputs := n.CopyOfInputs()
 
 	filterSize := 1
 	for _, d := range lmp.Filter.Dims {
@@ -813,7 +813,7 @@ func (lmp *leakyMaxPool) Evaluate(l *badstudent.Layer, values []float64) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) InputDeltas(l *badstudent.Layer, add func(int, float64), start, end int) error {
+func (lmp *leakyMaxPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
 	filterSize := 1
 	for _, d := range lmp.Filter.Dims {
 		filterSize *= d
@@ -831,9 +831,9 @@ func (lmp *leakyMaxPool) InputDeltas(l *badstudent.Layer, add func(int, float64)
 		f_init := make([]int, len(lmp.Filter.Dims))
 
 		for i := range out_init {
+			l := n.NumInputs()
 			n := input[i]
 			f := lmp.Filter.Dims[i]
-			l := l.NumInputs()
 			s := lmp.Stride[i]
 
 			r := n + f - l
@@ -873,9 +873,9 @@ func (lmp *leakyMaxPool) InputDeltas(l *badstudent.Layer, add func(int, float64)
 			// add delta to sum
 			outIndex := lmp.Outs.Index(out)
 			if lmp.switches[outIndex] == inputIndex {
-				sum += l.Delta(outIndex) * lmp.LeakFactor
+				sum += n.Delta(outIndex) * lmp.LeakFactor
 			} else {
-				sum += l.Delta(outIndex) * manyLeak
+				sum += n.Delta(outIndex) * manyLeak
 			}
 
 			// increment:
@@ -907,14 +907,14 @@ func (lmp *leakyMaxPool) InputDeltas(l *badstudent.Layer, add func(int, float64)
 	return nil
 }
 
-func (lmp *leakyMaxPool) CanBeAdjusted(l *badstudent.Layer) bool {
+func (lmp *leakyMaxPool) CanBeAdjusted(n *badstudent.Node) bool {
 	return false
 }
 
-func (lmp *leakyMaxPool) Adjust(l *badstudent.Layer, learningRate float64, saveChanges bool) error {
+func (lmp *leakyMaxPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) AddWeights(l *badstudent.Layer) error {
+func (lmp *leakyMaxPool) AddWeights(n *badstudent.Node) error {
 	return nil
 }

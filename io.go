@@ -20,14 +20,14 @@ func (net *Network) printMain(dirPath string) error {
 
 	defer f.Close()
 
-	// print the number of layers
-	if _, err = f.WriteString(strconv.Itoa(len(net.layersByID)) + "\n"); err != nil {
+	// print the number of nodes
+	if _, err = f.WriteString(strconv.Itoa(len(net.nodesByID)) + "\n"); err != nil {
 		return err // should be changed eventually
 	}
 
-	// print the id's of each input layer, in order, separated by spaces
+	// print the id's of each input node, in order, separated by spaces
 	str := ""
-	for i, in := range net.inLayers {
+	for i, in := range net.inNodes {
 		if i > 0 {
 			str += " "
 		}
@@ -38,9 +38,9 @@ func (net *Network) printMain(dirPath string) error {
 		return err // should be changed eventually
 	}
 
-	// print the id's of each output layer, in order, separated by spaces
+	// print the id's of each output node, in order, separated by spaces
 	str = ""
-	for i, out := range net.outLayers {
+	for i, out := range net.outNodes {
 		if i > 0 {
 			str += " "
 		}
@@ -54,8 +54,8 @@ func (net *Network) printMain(dirPath string) error {
 	return nil
 }
 
-func (l *Layer) printLayer(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + strconv.Itoa(l.id) + ".txt")
+func (n *Node) printNode(dirPath string) error {
+	f, err := os.Create(dirPath + "/" + strconv.Itoa(n.id) + ".txt")
 	if err != nil {
 		return err // should be more descriptive
 	}
@@ -63,28 +63,28 @@ func (l *Layer) printLayer(dirPath string) error {
 	defer f.Close()
 
 	// print id
-	f.WriteString(strconv.Itoa(l.id) + "\n")
+	f.WriteString(strconv.Itoa(n.id) + "\n")
 
 	// print name
-	f.WriteString(l.Name + "\n")
+	f.WriteString(n.Name + "\n")
 
 	// print size
-	f.WriteString(strconv.Itoa(l.Size()) + "\n")
+	f.WriteString(strconv.Itoa(n.Size()) + "\n")
 
 	// print list of inputs by id
 	str := ""
-	for i := range l.inputs {
+	for i := range n.inputs {
 		if i != 0 {
 			str += " "
 		}
 
-		str += strconv.Itoa(l.inputs[i].id)
+		str += strconv.Itoa(n.inputs[i].id)
 	}
 	str += "\n"
 	f.WriteString(str)
 
 	// print number of outputs
-	f.WriteString(strconv.Itoa(len(l.outputs)) + "\n")
+	f.WriteString(strconv.Itoa(len(n.outputs)) + "\n")
 
 	return nil
 }
@@ -114,8 +114,8 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 
 	net.printMain(dirPath)
 
-	for _, l := range net.layersByID {
-		if err = l.printLayer(dirPath); err != nil {
+	for _, l := range net.nodesByID {
+		if err = l.printNode(dirPath); err != nil {
 			return err // should be more descriptive
 		}
 
@@ -130,7 +130,7 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 // Loads the network from a version previously saved in a directory
 //
 // The provided path should be to the containing folder, the same as it would have been to Save() the network
-// 'types' and 'aux' should be maps of name of Layer to their values
+// 'types' and 'aux' should be maps of name of Node to their values
 // 'aux' is used to provide other information that may be necessary for certain constructors
 //
 // when finished, Load calls *Network.SetOutputs to finalize the network
@@ -150,23 +150,23 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	sc := bufio.NewScanner(main)
 
 	net := new(Network)
-	net.layersByName = make(map[string]*Layer)
+	net.nodesByName = make(map[string]*Node)
 
-	// make() net.layersByID with correct length
+	// make() net.nodesByID with correct length
 	{
 		if !sc.Scan() {
 			return nil, formatErr
 		}
 
-		var numLayers int
-		if numLayers, err = strconv.Atoi(sc.Text()); err != nil {
+		var numNodes int
+		if numNodes, err = strconv.Atoi(sc.Text()); err != nil {
 			return nil, formatErr
 		}
 
-		net.layersByID = make([]*Layer, numLayers)
+		net.nodesByID = make([]*Node, numNodes)
 	}
 
-	// get list of input and output layers
+	// get list of input and output nodes
 	var inputsByID, outputsByID []int
 	{
 		if !sc.Scan() {
@@ -194,38 +194,38 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 		}
 	}
 
-	// make all of the layers in the network, in order by id
-	for id := range net.layersByID {
-		if err = net.remakeLayer(dirPath, id); err != nil {
-			return nil, errors.Wrapf(err, "Can't load network: failed to load layer (id: %d)\n", id)
+	// make all of the nodes in the network, in order by id
+	for id := range net.nodesByID {
+		if err = net.remakeNode(dirPath, id); err != nil {
+			return nil, errors.Wrapf(err, "Can't load network: failed to load node (id: %d)\n", id)
 		}
 
 		subDir := dirPath + "/" + strconv.Itoa(id)
-		l := net.layersByID[id]
+		l := net.nodesByID[id]
 
 		if types[l.Name] == nil {
-			return nil, errors.Errorf("Can't load network, no given Operator for layer %v", l)
+			return nil, errors.Errorf("Can't load network, no given Operator for node %v", l)
 		}
 		l.typ = types[l.Name]
 
 		if err = types[l.Name].Load(l, subDir, aux[l.Name]); err != nil {
-			return nil, errors.Wrapf(err, "Can't load network, failed to load Operator for layer %v (id: %d)\n", l, id)
+			return nil, errors.Wrapf(err, "Can't load network, failed to load Operator for node %v (id: %d)\n", l, id)
 		}
 	}
 
 	// check that the inputs to the network are the same as what has been provided
 	// -- essentially checking that everything adds up
 	for i, id := range inputsByID {
-		if net.inLayers[i] != net.layersByID[id] {
-			return nil, errors.Errorf("Network input %d (%v) does not match supposed network input (from %s.txt) (%v)", i, net.inLayers[i], main_file, net.layersByID[id])
+		if net.inNodes[i] != net.nodesByID[id] {
+			return nil, errors.Errorf("Network input %d (%v) does not match supposed network input (from %s.txt) (%v)", i, net.inNodes[i], main_file, net.nodesByID[id])
 		}
 	}
 
 	// set the outputs to the network
 	{
-		outputs := make([]*Layer, len(outputsByID))
+		outputs := make([]*Node, len(outputsByID))
 		for i, id := range outputsByID {
-			outputs[i] = net.layersByID[id]
+			outputs[i] = net.nodesByID[id]
 		}
 
 		if err := net.SetOutputs(outputs...); err != nil {
@@ -238,22 +238,22 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 
 // 'dirPath' should be the same path for the loading of the network
 // -- it should not be the path to a file
-func (net *Network) remakeLayer(dirPath string, id int) error {
+func (net *Network) remakeNode(dirPath string, id int) error {
 	f, err := os.Open(dirPath + "/" + strconv.Itoa(id) + ".txt")
 	if err != nil {
-		return errors.Errorf("Can't load network, file for layer #%d doesn't exist", id)
+		return errors.Errorf("Can't load network, file for node #%d doesn't exist", id)
 	}
 
 	defer f.Close()
 
-	l := new(Layer)
+	l := new(Node)
 	l.hostNetwork = net
 	l.status = initialized
 
 	sc := bufio.NewScanner(f)
-	formatErr := errors.Errorf("Can't load network, file for layer #%d has wrong format", id)
+	formatErr := errors.Errorf("Can't load network, file for node #%d has wrong format", id)
 
-	// set layer id - check that the id of the file matches the id of its name
+	// set node id - check that the id of the file matches the id of its name
 	{
 		if !sc.Scan() {
 			return formatErr
@@ -264,17 +264,17 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 		}
 
 		if l.id != id {
-			return errors.Errorf("Can't load network, mismatch between file name and content of layer %d", id)
+			return errors.Errorf("Can't load network, mismatch between file name and content of node %d", id)
 		}
 	}
 
-	// set layer name, size
+	// set node name, size
 	{
 		if !sc.Scan() {
 			return formatErr
 		}
 		l.Name = sc.Text()
-		net.layersByName[l.Name] = l
+		net.nodesByName[l.Name] = l
 
 		if !sc.Scan() {
 			return formatErr
@@ -305,13 +305,13 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 		}
 
 		if len(ids) == 0 {
-			net.inLayers = append(net.inLayers, l)
+			net.inNodes = append(net.inNodes, l)
 		} else {
-			l.inputs = make([]*Layer, len(ids))
+			l.inputs = make([]*Node, len(ids))
 			l.numInputs = make([]int, len(ids))
 			totalInputs := 0
 			for i := range ids {
-				in := net.layersByID[ids[i]]
+				in := net.nodesByID[ids[i]]
 				l.inputs[i] = in
 
 				totalInputs += in.Size()
@@ -333,10 +333,10 @@ func (net *Network) remakeLayer(dirPath string, id int) error {
 			return formatErr
 		}
 
-		l.outputs = make([]*Layer, 0, capacity)
+		l.outputs = make([]*Node, 0, capacity)
 	}
 
-	net.layersByID[id] = l
+	net.nodesByID[id] = l
 
 	return nil
 }

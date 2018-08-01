@@ -46,7 +46,7 @@ func main() {
 	fmt.Println("Setting up network...")
 	{
 		var err error
-		var l, hl *badstudent.Layer
+		var l, hl *badstudent.Node
 
 		if l, err = net.Add("input", operators.Neurons(optimizers.GradientDescent()), 2); err != nil {
 			panic(err.Error())

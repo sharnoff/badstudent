@@ -14,7 +14,7 @@ func GradientDescent() gradientdescent {
 	return gradientdescent(0)
 }
 
-func (g gradientdescent) Run(l *badstudent.Layer, size int, grad func(int) float64, add func(int, float64), learningRate float64) error {
+func (g gradientdescent) Run(n *badstudent.Node, size int, grad func(int) float64, add func(int, float64), learningRate float64) error {
 
 	threadsPerCPU := 1
 	opsPerThread := runtime.NumCPU()
@@ -28,10 +28,10 @@ func (g gradientdescent) Run(l *badstudent.Layer, size int, grad func(int) float
 	return nil
 }
 
-func (g gradientdescent) Save(l *badstudent.Layer, op badstudent.Operator, dirPath string) error {
+func (g gradientdescent) Save(n *badstudent.Node, op badstudent.Operator, dirPath string) error {
 	return nil
 }
 
-func (g gradientdescent) Load(l *badstudent.Layer, op badstudent.Operator, dirPath string, aux []interface{}) error {
+func (g gradientdescent) Load(n *badstudent.Node, op badstudent.Operator, dirPath string, aux []interface{}) error {
 	return nil
 }
