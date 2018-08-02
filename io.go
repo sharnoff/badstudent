@@ -27,7 +27,7 @@ func (net *Network) printMain(dirPath string) error {
 
 	// print the id's of each input node, in order, separated by spaces
 	str := ""
-	for i, in := range net.inNodes {
+	for i, in := range net.inputs.nodes {
 		if i > 0 {
 			str += " "
 		}
@@ -40,7 +40,7 @@ func (net *Network) printMain(dirPath string) error {
 
 	// print the id's of each output node, in order, separated by spaces
 	str = ""
-	for i, out := range net.outNodes {
+	for i, out := range net.outputs.nodes {
 		if i > 0 {
 			str += " "
 		}
@@ -216,8 +216,8 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	// check that the inputs to the network are the same as what has been provided
 	// -- essentially checking that everything adds up
 	for i, id := range inputsByID {
-		if net.inNodes[i] != net.nodesByID[id] {
-			return nil, errors.Errorf("Network input %d (%v) does not match supposed network input (from %s.txt) (%v)", i, net.inNodes[i], main_file, net.nodesByID[id])
+		if net.inputs.nodes[i] != net.nodesByID[id] {
+			return nil, errors.Errorf("Network input %d (%v) does not match supposed network input (from %s.txt) (%v)", i, net.inputs.nodes[i], main_file, net.nodesByID[id])
 		}
 	}
 
@@ -305,7 +305,7 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 		}
 
 		if len(ids) == 0 {
-			net.inNodes = append(net.inNodes, l)
+			net.inputs.nodes = append(net.inputs.nodes, l)
 		} else {
 			l.inputs = make([]*Node, len(ids))
 			l.numInputs = make([]int, len(ids))

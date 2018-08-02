@@ -14,6 +14,7 @@ import (
 // if Add returns an error, the host Network will not be functionally different
 func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*Node, error) {
 
+	// if the network has not been initialized
 	if net.nodesByName == nil {
 		net.nodesByName = make(map[string]*Node)
 	}
@@ -59,7 +60,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 	}
 
 	if len(inputs) == 0 {
-		net.inNodes = append(net.inNodes, l)
+		net.inputs.nodes = append(net.inputs.nodes, l)
 	} else {
 		for _, in := range inputs {
 			in.outputs = append(in.outputs, l)
@@ -79,7 +80,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 //
 // if SetOutputs returns an error, the network has remained unchanged
 func (net *Network) SetOutputs(outputs ...*Node) error {
-	if net.inNodes == nil {
+	if net.inputs.nodes == nil {
 		return errors.Errorf("Can't set outputs of network, network has no nodes")
 	} else if len(outputs) == 0 {
 		return errors.Errorf("Can't set outputs of network, none given")
@@ -130,33 +131,33 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 
 		numOutValues += out.Size()
 	}
-	net.outNodes = outputs
+	net.outputs.nodes = outputs
 
 	// remove the unused space at the end of slices
 	{
-		inputs := net.inNodes
-		net.inNodes = make([]*Node, len(inputs))
-		copy(net.inNodes, inputs)
+		inputs := net.inputs.nodes
+		net.inputs.nodes = make([]*Node, len(inputs))
+		copy(net.inputs.nodes, inputs)
 	}
 
 	// allocate a single slice for the inputs and outputs, to make copying to and from them easier
 	{
-		net.outputs = make([]float64, numOutValues)
+		net.outputs.values = make([]float64, numOutValues)
 		place := 0
-		for _, out := range net.outNodes {
-			out.values = net.outputs[place : place+out.Size()]
+		for _, out := range net.outputs.nodes {
+			out.values = net.outputs.values[place : place + out.Size()]
 			place += out.Size()
 		}
 
 		numInputs := 0
-		for _, in := range net.inNodes {
+		for _, in := range net.inputs.nodes {
 			numInputs += in.Size()
 		}
 
-		net.inputs = make([]float64, numInputs)
+		net.inputs.values = make([]float64, numInputs)
 		place = 0
-		for _, in := range net.inNodes {
-			in.values = net.inputs[place : place+in.Size()]
+		for _, in := range net.inputs.nodes {
+			in.values = net.inputs.values[place : place + in.Size()]
 			place += in.Size()
 		}
 	}

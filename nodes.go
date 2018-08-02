@@ -2,7 +2,6 @@ package badstudent
 
 import (
 	"sort"
-	"sync"
 )
 
 // returns the the Name of the Node, surrounded by double quotes

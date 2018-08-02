@@ -18,16 +18,16 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	}
 
 	rangeCostDeriv := func(start, end int, add func(int, float64)) error {
-		return cf.Deriv(net.outputs, targets, start, end, add)
+		return cf.Deriv(net.outputs.values, targets, start, end, add)
 	}
 
-	for i, in := range net.inNodes {
+	for i, in := range net.inputs.nodes {
 		if err = in.getDeltas(rangeCostDeriv, false); err != nil { // deltasMatter = false
 			err = errors.Wrapf(err, "Couldn't correct network, getting deltas of network input %v (#%d) failed\n", in, i)
 		}
 	}
 
-	for i, out := range net.outNodes {
+	for i, out := range net.outputs.nodes {
 		if err = out.adjust(learningRate, saveChanges); err != nil {
 			err = errors.Wrapf(err, "Couldn't correct network, adjusting failed for output %v (#%d)\n", out, i)
 		}
@@ -49,7 +49,7 @@ type Datum struct {
 }
 
 func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == len(net.inputs) && len(d.Outputs) == len(net.outputs)
+	return len(d.Inputs) == len(net.inputs.values) && len(d.Outputs) == len(net.outputs.values)
 }
 
 // A wrapper for sending back the progress of the training or testing

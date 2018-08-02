@@ -57,7 +57,7 @@ func (n *Node) checkOutputs() error {
 
 // checks the outputs of all nodes in the network
 func (net *Network) checkOutputs() error {
-	for i, in := range net.inNodes {
+	for i, in := range net.inputs.nodes {
 		if err := in.checkOutputs(); err != nil {
 			return errors.Wrapf(err, "Failed to check outputs of network input %v (#%d)\n", in, i)
 		}
@@ -89,12 +89,12 @@ func (n *Node) inputsChanged() {
 // returns an error if the length of the provided values doesn't
 // match the size of the network inputs
 func (net *Network) SetInputs(inputs []float64) error {
-	if len(inputs) != len(net.inputs) {
-		return errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs))
+	if len(inputs) != len(net.inputs.values) {
+		return errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs.values))
 	}
 
-	copy(net.inputs, inputs)
-	for _, in := range net.inNodes {
+	copy(net.inputs.values, inputs)
+	for _, in := range net.inputs.nodes {
 		in.inputsChanged()
 	}
 
@@ -136,14 +136,14 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 		return nil, errors.Wrapf(err, "Couldn't get outputs; setting inputs failed.\n")
 	}
 
-	for i, out := range net.outNodes {
+	for i, out := range net.outputs.nodes {
 		if err := out.evaluate(); err != nil {
 			return nil, errors.Wrapf(err, "Can't get outputs, network output node %v (#%d) failed to evaluate\n", out, i)
 		}
 	}
 
-	c := make([]float64, len(net.outputs))
-	copy(c, net.outputs)
+	c := make([]float64, len(net.outputs.values))
+	copy(c, net.outputs.values)
 	return c, nil
 }
 
@@ -301,7 +301,7 @@ func (n *Node) addWeights() error {
 // Updates the weights in the newtork with any previously delayed changes
 func (net *Network) AddWeights() error {
 
-	for i, out := range net.outNodes {
+	for i, out := range net.outputs.nodes {
 		if err := out.addWeights(); err != nil {
 			return errors.Wrapf(err, "Couldn't add weights of network, output node %v (#%d) failed to add weights\n", out, i)
 		}

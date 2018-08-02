@@ -1,19 +1,29 @@
 package badstudent
 
-import ()
+import (
+	"sync"
+)
 
 // The main structure that is used to learn to map input to output functions.
 // A Network is more of a containing structure than it is actual storage of
 // information.
 type Network struct {
-	inNodes  []*Node
-	outNodes []*Node
+	inputs, outputs nodeGroup
 
-	inputs  []float64
-	outputs []float64
-
-	nodesByName map[string]*Node
 	nodesByID   []*Node
+	nodesByName map[string]*Node
+}
+
+// nodeGroups are used to put in one place the code that relies on
+type nodeGroup struct {
+	nodes []*Node
+
+	// only non-nil if in use.
+	//
+	// if the nodeGroup is continuous -- with values adjacent in memory,
+	// 'values' serves as an encapsulating slice that covers the same space as
+	// where the individual values of the nodes are stored
+	values []float64
 }
 
 // The Node is the fundamental building block with which the network is built.
