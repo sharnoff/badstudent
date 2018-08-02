@@ -5,17 +5,6 @@ import (
 	"strings"
 )
 
-type Network struct {
-	inNodes  []*Node
-	outNodes []*Node
-
-	inputs  []float64
-	outputs []float64
-
-	nodesByName map[string]*Node
-	nodesByID   []*Node
-}
-
 // Adds a new node to the Network, with given name, size, inputs, and Operator
 // If no inputs are given, the node will be one of the input nodes, and its size added to the
 // number of inputs
