@@ -17,6 +17,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 	// if the network has not been initialized
 	if net.nodesByName == nil {
 		net.nodesByName = make(map[string]*Node)
+		net.inputs = new(nodeGroup)
 	}
 
 	if size < 1 {
@@ -29,16 +30,16 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 		return nil, errors.Errorf("Can't add node to network, name cannot contain \"")
 	}
 
-	l := new(Node)
-	l.Name = name
-	l.status = initialized
-	l.hostNetwork = net
-	l.typ = typ
-	l.id = len(net.nodesByID)
+	n := new(Node)
+	n.Name = name
+	n.status = initialized
+	n.hostNetwork = net
+	n.typ = typ
+	n.id = len(net.nodesByID)
 
 	{
-		l.inputs = inputs
-		l.numInputs = make([]int, len(inputs))
+		n.inputs = inputs
+		n.numInputs = make([]int, len(inputs))
 		totalInputs := 0
 		for i, in := range inputs {
 			if in == nil {
@@ -48,29 +49,29 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 			}
 
 			totalInputs += in.Size()
-			l.numInputs[i] = totalInputs
+			n.numInputs[i] = totalInputs
 		}
 	}
 
-	l.values = make([]float64, size)
-	l.deltas = make([]float64, size)
+	n.values = make([]float64, size)
+	n.deltas = make([]float64, size)
 
-	if err := typ.Init(l); err != nil {
-		return nil, errors.Wrapf(err, "Couldn't add node %v to network, initializing Operator failed\n", l)
+	if err := typ.Init(n); err != nil {
+		return nil, errors.Wrapf(err, "Couldn't add node %v to network, initializing Operator failed\n", n)
 	}
 
 	if len(inputs) == 0 {
-		net.inputs.nodes = append(net.inputs.nodes, l)
+		net.inputs.add(n)
 	} else {
 		for _, in := range inputs {
-			in.outputs = append(in.outputs, l)
+			in.outputs = append(in.outputs, n)
 		}
 	}
 
-	net.nodesByName[name] = l
-	net.nodesByID = append(net.nodesByID, l)
+	net.nodesByName[name] = n
+	net.nodesByID = append(net.nodesByID, n)
 
-	return l, nil
+	return n, nil
 }
 
 // Finalizes the Network, checking that:
@@ -80,7 +81,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 //
 // if SetOutputs returns an error, the network has remained unchanged
 func (net *Network) SetOutputs(outputs ...*Node) error {
-	if net.inputs.nodes == nil {
+	if len(net.nodesByID) == 0 {
 		return errors.Errorf("Can't set outputs of network, network has no nodes")
 	} else if len(outputs) == 0 {
 		return errors.Errorf("Can't set outputs of network, none given")
@@ -131,36 +132,16 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 
 		numOutValues += out.Size()
 	}
-	net.outputs.nodes = outputs
+
+	net.outputs = new(nodeGroup)
+	net.outputs.add(outputs...)
 
 	// remove the unused space at the end of slices
-	{
-		inputs := net.inputs.nodes
-		net.inputs.nodes = make([]*Node, len(inputs))
-		copy(net.inputs.nodes, inputs)
-	}
+	net.inputs.trim()
 
-	// allocate a single slice for the inputs and outputs, to make copying to and from them easier
-	{
-		net.outputs.values = make([]float64, numOutValues)
-		place := 0
-		for _, out := range net.outputs.nodes {
-			out.values = net.outputs.values[place : place + out.Size()]
-			place += out.Size()
-		}
-
-		numInputs := 0
-		for _, in := range net.inputs.nodes {
-			numInputs += in.Size()
-		}
-
-		net.inputs.values = make([]float64, numInputs)
-		place = 0
-		for _, in := range net.inputs.nodes {
-			in.values = net.inputs.values[place : place + in.Size()]
-			place += in.Size()
-		}
-	}
+	// allocate single slices for inputs and outputs
+	net.inputs.makeContinuous()
+	net.outputs.makeContinuous()
 
 	return nil
 }

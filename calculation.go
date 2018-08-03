@@ -89,16 +89,7 @@ func (n *Node) inputsChanged() {
 // returns an error if the length of the provided values doesn't
 // match the size of the network inputs
 func (net *Network) SetInputs(inputs []float64) error {
-	if len(inputs) != len(net.inputs.values) {
-		return errors.Errorf("Can't set inputs, len(inputs) != len(net.inputs) (%d != %d)", len(inputs), len(net.inputs.values))
-	}
-
-	copy(net.inputs.values, inputs)
-	for _, in := range net.inputs.nodes {
-		in.inputsChanged()
-	}
-
-	return nil
+	return net.inputs.setValues(inputs)
 }
 
 // updates the values of the node so that they are accurate, given the inputs
@@ -142,9 +133,7 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 		}
 	}
 
-	c := make([]float64, len(net.outputs.values))
-	copy(c, net.outputs.values)
-	return c, nil
+	return net.outputs.getValues(true), nil
 }
 
 // Calculates the deltas for each value of the node

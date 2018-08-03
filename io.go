@@ -305,7 +305,7 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 		}
 
 		if len(ids) == 0 {
-			net.inputs.nodes = append(net.inputs.nodes, l)
+			net.inputs.add(l)
 		} else {
 			l.inputs = make([]*Node, len(ids))
 			l.numInputs = make([]int, len(ids))

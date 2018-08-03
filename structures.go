@@ -8,22 +8,37 @@ import (
 // A Network is more of a containing structure than it is actual storage of
 // information.
 type Network struct {
-	inputs, outputs nodeGroup
+	inputs, outputs *nodeGroup
 
 	nodesByID   []*Node
 	nodesByName map[string]*Node
 }
 
-// nodeGroups are used to put in one place the code that relies on
+// nodeGroups are a just a collection of what would be individual functions
+// because of how different objects handle slices of Nodes
+//
+// In order to allow nodeGroups to exist, Nodes each have a field: 'group',
+// a pointer to the nodeGroup that requires its slice of values to be kept
+// in the same location. If there is no nodeGroup relying on a Node's values,
+// Node.group will be nil.
+//
+// nodeGroups default to not being continuous.
+// A nodeGroup is created by new(nodeGroup)
 type nodeGroup struct {
+	// A list of all of the members of the group
 	nodes []*Node
 
-	// only non-nil if in use.
+	// Only non-nil if in use.
 	//
-	// if the nodeGroup is continuous -- with values adjacent in memory,
+	// If the nodeGroup is continuous -- with values adjacent in memory,
 	// 'values' serves as an encapsulating slice that covers the same space as
 	// where the individual values of the nodes are stored
 	values []float64
+
+	// The sum of the sizes of each Node, up to and including the node at the specified index.
+	// For example: index 0 would be equal to the size of the 0th Node; the last index is equal
+	// to the size of the entire group.
+	sumVals []int
 }
 
 // The Node is the fundamental building block with which the network is built.
@@ -38,6 +53,10 @@ type Node struct {
 
 	// used for validation during setup
 	hostNetwork *Network
+
+	// the continuous nodeGroup that the Node belongs to, if there is one
+	// otherwise is nil
+	group *nodeGroup
 
 	// handles all of the actual operations from
 	typ Operator

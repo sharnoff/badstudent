@@ -18,7 +18,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	}
 
 	rangeCostDeriv := func(start, end int, add func(int, float64)) error {
-		return cf.Deriv(net.outputs.values, targets, start, end, add)
+		return cf.Deriv(net.outputs.getValues(false), targets, start, end, add)
 	}
 
 	for i, in := range net.inputs.nodes {
@@ -49,7 +49,7 @@ type Datum struct {
 }
 
 func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == len(net.inputs.values) && len(d.Outputs) == len(net.outputs.values)
+	return len(d.Inputs) == net.inputs.size() && len(d.Outputs) == net.outputs.size()
 }
 
 // A wrapper for sending back the progress of the training or testing
