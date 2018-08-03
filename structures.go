@@ -52,7 +52,7 @@ type Node struct {
 	id int
 
 	// used for validation during setup
-	hostNetwork *Network
+	host *Network
 
 	// the continuous nodeGroup that the Node belongs to, if there is one
 	// otherwise is nil
@@ -71,19 +71,11 @@ type Node struct {
 	// separate from 'status.' true iff inputDeltas() have been run on outputs to node
 	deltasActuallyCalculated bool
 
-	// the nodes that the given node inputs from
-	// could be nil
-	inputs []*Node
+	// The set of Nodes that the given Node takes input from
+	inputs *nodeGroup
 
-	// for each node, the sum of the number of its values and those
-	// of nodes in previous indexes
-	// ex: the index for the last input will have the total
-	// number of input values to the node
-	numInputs []int
-
-	// the nodes that the given node outputs to
-	// can be nil. Can also be non-nil and node is an output
-	outputs []*Node
+	// The set of Nodes that this Node outputs to
+	outputs *nodeGroup
 
 	// whether or not the node's values are part of the set of
 	// output values to the network

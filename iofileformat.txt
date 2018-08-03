@@ -11,5 +11,4 @@ _________
 <name>
 <size>
 << list of inputs by id >>
-<number of outputs>
 EOF

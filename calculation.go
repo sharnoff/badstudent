@@ -34,18 +34,14 @@ func (n *Node) checkOutputs() error {
 		return nil
 	}
 
-	if len(n.outputs) == 0 && !n.isOutput {
+	if num(n.outputs) == 0 && !n.isOutput {
 		return errors.Errorf("Checked outputs; node %v has no effect on network outputs (has no outputs and is not a network output)\n", n)
 	}
 
 	// remove the unused space at the end of slices
-	{
-		outputs := n.outputs
-		n.outputs = make([]*Node, len(outputs))
-		copy(n.outputs, outputs)
-	}
+	n.outputs.trim()
 
-	for i, out := range n.outputs {
+	for i, out := range n.outputs.nodes {
 		if err := out.checkOutputs(); err != nil {
 			return errors.Wrapf(err, "Checking outputs of output %d to node %v (%v) failed\n", i, n, out)
 		}
@@ -80,7 +76,7 @@ func (n *Node) inputsChanged() {
 	n.status = changed
 	n.statusMux.Unlock()
 
-	for _, out := range n.outputs {
+	for _, out := range n.outputs.nodes {
 		out.inputsChanged()
 	}
 }
@@ -100,12 +96,12 @@ func (n *Node) evaluate() error {
 	defer n.statusMux.Unlock()
 	if n.status >= evaluated && n.status != weightsAdded {
 		return nil
-	} else if len(n.inputs) == 0 {
+	} else if num(n.inputs) == 0 {
 		n.status = evaluated
 		return nil
 	}
 
-	for i, in := range n.inputs {
+	for i, in := range n.inputs.nodes {
 		if err := in.evaluate(); err != nil {
 			return errors.Wrapf(err, "Can't evaluate node %v, evaluating input %v (#%d) failed\n", n, in, i)
 		}
@@ -154,7 +150,7 @@ func (n *Node) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error
 	}
 
 	if !deltasMatter {
-		for i, out := range n.outputs {
+		for i, out := range n.outputs.nodes {
 			if err := out.getDeltas(rangeCostDeriv, deltasMatter); err != nil { // deltasMatter = false
 				return errors.Wrapf(err, "Can't pass on getting deltas from node %v, getting deltas of node %v (output %d) failed\n", n, out, i)
 			}
@@ -173,7 +169,7 @@ func (n *Node) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error
 			}
 		}
 
-		for i, out := range n.outputs {
+		for i, out := range n.outputs.nodes {
 			if err := out.inputDeltas(n, add, rangeCostDeriv); err != nil {
 				return errors.Wrapf(err, "Can't get deltas of node %v, input deltas from node %v (output %d) failed\n", n, out, i)
 			}
@@ -209,8 +205,8 @@ func (n *Node) inputDeltas(input *Node, add func(int, float64), rangeCostDeriv f
 
 	// find the index in 'n.inputs' that 'input' is. If not there, return error
 	inputIndex := -1
-	for i := range n.inputs {
-		if n.inputs[i] == input {
+	for i, in := range n.inputs.nodes {
+		if in == input {
 			inputIndex = i
 			break
 		}
@@ -254,7 +250,7 @@ func (n *Node) adjust(learningRate float64, saveChanges bool) error {
 	n.status = adjusted
 	n.statusMux.Unlock()
 
-	for i, in := range n.inputs {
+	for i, in := range n.inputs.nodes {
 		if err := in.adjust(learningRate, saveChanges); err != nil {
 			return errors.Wrapf(err, "Failed to recurse after adjusting weights to node %v (input %d) from node %v\n", in, i, n)
 		}
@@ -278,7 +274,7 @@ func (n *Node) addWeights() error {
 	n.status = weightsAdded
 	n.statusMux.Unlock()
 
-	for i, in := range n.inputs {
+	for i, in := range n.inputs.nodes {
 		if err := in.addWeights(); err != nil {
 			return errors.Wrapf(err, "Failed to recurse to %v (input %d) after adding weights of node %v\n", in, i, n)
 		}
@@ -289,7 +285,6 @@ func (n *Node) addWeights() error {
 
 // Updates the weights in the newtork with any previously delayed changes
 func (net *Network) AddWeights() error {
-
 	for i, out := range net.outputs.nodes {
 		if err := out.addWeights(); err != nil {
 			return errors.Wrapf(err, "Couldn't add weights of network, output node %v (#%d) failed to add weights\n", out, i)

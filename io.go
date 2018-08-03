@@ -73,18 +73,15 @@ func (n *Node) printNode(dirPath string) error {
 
 	// print list of inputs by id
 	str := ""
-	for i := range n.inputs {
+	for i, in := range n.inputs.nodes {
 		if i != 0 {
 			str += " "
 		}
 
-		str += strconv.Itoa(n.inputs[i].id)
+		str += strconv.Itoa(in.id)
 	}
 	str += "\n"
 	f.WriteString(str)
-
-	// print number of outputs
-	f.WriteString(strconv.Itoa(len(n.outputs)) + "\n")
 
 	return nil
 }
@@ -114,12 +111,12 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 
 	net.printMain(dirPath)
 
-	for _, l := range net.nodesByID {
-		if err = l.printNode(dirPath); err != nil {
+	for _, n := range net.nodesByID {
+		if err = n.printNode(dirPath); err != nil {
 			return err // should be more descriptive
 		}
 
-		if err = l.typ.Save(l, dirPath+"/"+strconv.Itoa(l.id)); err != nil {
+		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
 			return err // should be more descriptive
 		}
 	}
@@ -201,15 +198,15 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 		}
 
 		subDir := dirPath + "/" + strconv.Itoa(id)
-		l := net.nodesByID[id]
+		n := net.nodesByID[id]
 
-		if types[l.Name] == nil {
-			return nil, errors.Errorf("Can't load network, no given Operator for node %v", l)
+		if types[n.Name] == nil {
+			return nil, errors.Errorf("Can't load network, no given Operator for node %v", n)
 		}
-		l.typ = types[l.Name]
+		n.typ = types[n.Name]
 
-		if err = types[l.Name].Load(l, subDir, aux[l.Name]); err != nil {
-			return nil, errors.Wrapf(err, "Can't load network, failed to load Operator for node %v (id: %d)\n", l, id)
+		if err = types[n.Name].Load(n, subDir, aux[n.Name]); err != nil {
+			return nil, errors.Wrapf(err, "Can't load network, failed to load Operator for node %v (id: %d)\n", n, id)
 		}
 	}
 
@@ -246,9 +243,9 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 
 	defer f.Close()
 
-	l := new(Node)
-	l.hostNetwork = net
-	l.status = initialized
+	n := new(Node)
+	n.host = net
+	n.status = initialized
 
 	sc := bufio.NewScanner(f)
 	formatErr := errors.Errorf("Can't load network, file for node #%d has wrong format", id)
@@ -259,11 +256,11 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 			return formatErr
 		}
 
-		if l.id, err = strconv.Atoi(sc.Text()); err != nil {
+		if n.id, err = strconv.Atoi(sc.Text()); err != nil {
 			return formatErr
 		}
 
-		if l.id != id {
+		if n.id != id {
 			return errors.Errorf("Can't load network, mismatch between file name and content of node %d", id)
 		}
 	}
@@ -273,8 +270,8 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 		if !sc.Scan() {
 			return formatErr
 		}
-		l.Name = sc.Text()
-		net.nodesByName[l.Name] = l
+		n.Name = sc.Text()
+		net.nodesByName[n.Name] = n
 
 		if !sc.Scan() {
 			return formatErr
@@ -283,8 +280,8 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 		if err != nil {
 			return formatErr
 		}
-		l.values = make([]float64, size)
-		l.deltas = make([]float64, size)
+		n.values = make([]float64, size)
+		n.deltas = make([]float64, size)
 	}
 
 	// set the inputs to l
@@ -305,38 +302,19 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 		}
 
 		if len(ids) == 0 {
-			net.inputs.add(l)
+			net.inputs.add(n)
 		} else {
-			l.inputs = make([]*Node, len(ids))
-			l.numInputs = make([]int, len(ids))
-			totalInputs := 0
+			n.inputs = new(nodeGroup)
 			for i := range ids {
 				in := net.nodesByID[ids[i]]
-				l.inputs[i] = in
+				n.inputs.add(in)
 
-				totalInputs += in.Size()
-				l.numInputs[i] = totalInputs
-
-				in.outputs = append(in.outputs, l)
+				in.outputs.add(n)
 			}
 		}
 	}
 
-	// set capacity of outputs
-	{
-		if !sc.Scan() {
-			return formatErr
-		}
-
-		capacity, err := strconv.Atoi(sc.Text())
-		if err != nil {
-			return formatErr
-		}
-
-		l.outputs = make([]*Node, 0, capacity)
-	}
-
-	net.nodesByID[id] = l
+	net.nodesByID[id] = n
 
 	return nil
 }

@@ -3,6 +3,7 @@ package badstudent
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"sort"
 )
 
 // Returns the number of values in the group
@@ -12,6 +13,11 @@ func (ng *nodeGroup) size() int {
 	}
 
 	return ng.sumVals[len(ng.sumVals)-1]
+}
+
+// Returns the number of nodes in the group
+func num(ng *nodeGroup) int {
+	return len(ng.nodes)
 }
 
 // This method is self-explanatory
@@ -129,4 +135,47 @@ func (ng *nodeGroup) getValues(dupe bool) []float64 {
 		}
 		return values
 	}
+}
+
+// If not continuous, binary searches for the node with the specified index
+// Allows out-of-bounds panics instead of returning a nil error
+func (ng *nodeGroup) value(index int) float64 {
+	if ng.isContinuous() {
+		return ng.values[index]
+	}
+
+	greaterThan := func(i int) bool {
+		return index < ng.sumVals[i]
+	}
+
+	i := sort.Search(len(ng.nodes), greaterThan)
+
+	if i > 0 {
+		index -= ng.sumVals[i-1]
+	}
+
+	return ng.nodes[i].Value(index)
+}
+
+// Returns a channel that iterates over the values of the group
+func (ng *nodeGroup) valueIterator() chan float64 {
+	ch := make(chan float64)
+	if ng.isContinuous() {
+		go func() {
+			for _, v := range ng.values {
+				ch <- v
+			}
+		}()
+	} else {
+		go func() {
+			for _, n := range ng.nodes {
+				for v := range n.valueIterator() {
+					ch <- v
+				}
+			}
+			close(ch)
+		}()
+	}
+
+	return ch
 }

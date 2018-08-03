@@ -9,7 +9,7 @@ import (
 // If no inputs are given, the node will be one of the input nodes, and its size added to the
 // number of inputs
 //
-// The name of each node must be unique, cannot be "", and cannot contain a `"`
+// The name of each node must be unique, cannot be empty, and cannot contain a `"`
 //
 // if Add returns an error, the host Network will not be functionally different
 func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*Node, error) {
@@ -33,23 +33,20 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 	n := new(Node)
 	n.Name = name
 	n.status = initialized
-	n.hostNetwork = net
+	n.host = net
 	n.typ = typ
 	n.id = len(net.nodesByID)
 
-	{
-		n.inputs = inputs
-		n.numInputs = make([]int, len(inputs))
-		totalInputs := 0
-		for i, in := range inputs {
-			if in == nil {
-				return nil, errors.Errorf("Can't add node to network, input #%d is nil", i)
-			} else if in.hostNetwork != net {
-				return nil, errors.Errorf("Can't add node to network, input #%d (%v) does not belong to the same Network", i, in)
-			}
+	n.inputs = new(nodeGroup)
+	n.outputs = new(nodeGroup)
 
-			totalInputs += in.Size()
-			n.numInputs[i] = totalInputs
+	n.inputs.add(inputs...)
+
+	for i, in := range inputs {
+		if in == nil {
+			return nil, errors.Errorf("Can't add node to network, input #%d is nil", i)
+		} else if in.host != net {
+			return nil, errors.Errorf("Can't add node to network, input #%d (%v) does not belong to the same Network", i, in)
 		}
 	}
 
@@ -64,7 +61,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 		net.inputs.add(n)
 	} else {
 		for _, in := range inputs {
-			in.outputs = append(in.outputs, n)
+			in.outputs.add(n)
 		}
 	}
 
@@ -104,9 +101,9 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 	for i, out := range outputs {
 		if out == nil {
 			return errors.Errorf("Can't set outputs of network, output node #%d is nil, i")
-		} else if out.hostNetwork != net {
+		} else if out.host != net {
 			return errors.Errorf("Can't set outputs of network, output node #%d (%v) does not belong to this network", i, out)
-		} else if len(out.inputs) == 0 {
+		} else if num(out.inputs) == 0 {
 			return errors.Errorf("Can't set outputs of network, output node #%d (%v) is both an input and an output", i, out)
 		}
 
