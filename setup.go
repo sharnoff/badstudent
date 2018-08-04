@@ -31,7 +31,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 	}
 
 	n := new(Node)
-	n.Name = name
+	n.name = name
 	n.host = net
 	n.typ = typ
 	n.id = len(net.nodesByID)

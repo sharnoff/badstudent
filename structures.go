@@ -50,7 +50,7 @@ type nodeGroup struct {
 type Node struct {
 	// The name that will be used to print this node.
 	// Used for unique identification, can be empty
-	Name string
+	name string
 
 	// used for order identification of which nodes were added first
 	id int

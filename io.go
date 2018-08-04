@@ -1,123 +1,125 @@
 package badstudent
 
 import (
-	"bufio"
+	"encoding/json"
 	"github.com/pkg/errors"
 	"os"
 	"strconv"
-	"strings"
-	// "fmt"
 )
 
-// main_file should not be a number
-const main_file string = "main"
+type proxy_Network struct {
+	// the IDs of each of the Nodes in the outputs
+	OutputsID []int
+	NamesByID []string
+}
 
-func (net *Network) printMain(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + main_file + ".txt")
+type proxy_Node struct {
+	Size     int
+	InputsID []int
+}
+
+func nodesToIDs(nodes []*Node) []int {
+	ids := make([]int, len(nodes))
+	for i := range nodes {
+		ids[i] = nodes[i].id
+	}
+	return ids
+}
+
+func idsToNodes(nodesByID []*Node, ids []int) []*Node {
+	nodes := make([]*Node, len(ids))
+	for i := range ids {
+		nodes[i] = nodesByID[ids[i]]
+	}
+	return nodes
+}
+
+// referred to in error messages as "overview"
+const main_file string = "main.net"
+
+func (net *Network) writeFile(dirPath string) error {
+	f, err := os.Create(dirPath + "/" + main_file)
 	if err != nil {
-		return errors.Wrapf(err, "Can't print main network to file, couldn't create file %s in %s\n", main_file, dirPath)
+		return errors.Wrapf(err, "Failed to create file %s in %s\n", main_file, dirPath)
 	}
 
 	defer f.Close()
 
-	// print the number of nodes
-	if _, err = f.WriteString(strconv.Itoa(len(net.nodesByID)) + "\n"); err != nil {
-		return err // should be changed eventually
-	}
-
-	// print the id's of each input node, in order, separated by spaces
-	str := ""
-	for i, in := range net.inputs.nodes {
-		if i > 0 {
-			str += " "
+	// convert the network to a format that can be written
+	var proxy proxy_Network
+	{
+		proxy = proxy_Network{
+			OutputsID: nodesToIDs(net.outputs.nodes),
 		}
 
-		str += strconv.Itoa(in.id)
-	}
-	if _, err = f.WriteString(str + "\n"); err != nil {
-		return err // should be changed eventually
-	}
-
-	// print the id's of each output node, in order, separated by spaces
-	str = ""
-	for i, out := range net.outputs.nodes {
-		if i > 0 {
-			str += " "
+		proxy.NamesByID = make([]string, len(net.nodesByID))
+		for i := range net.nodesByID {
+			proxy.NamesByID[i] = net.nodesByID[i].name
 		}
-
-		str += strconv.Itoa(out.id)
 	}
-	if _, err = f.WriteString(str + "\n"); err != nil {
-		return err // should be changed eventually
+
+	enc := json.NewEncoder(f)
+	if err = enc.Encode(proxy); err != nil {
+		return errors.Wrapf(err, "Failed to encode Network proxy\n")
 	}
 
 	return nil
 }
 
-func (n *Node) printNode(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + strconv.Itoa(n.id) + ".txt")
+func (n *Node) writeFile(dirPath string) error {
+	f, err := os.Create(dirPath + "/" + strconv.Itoa(n.id) + ".node")
 	if err != nil {
-		return err // should be more descriptive
+		return errors.Wrapf(err, "Failed to create a save file for Node %v (file %q in %s)\n", n, strconv.Itoa(n.id)+".node", dirPath)
 	}
 
-	defer f.Close()
-
-	// print id
-	f.WriteString(strconv.Itoa(n.id) + "\n")
-
-	// print name
-	f.WriteString(n.Name + "\n")
-
-	// print size
-	f.WriteString(strconv.Itoa(n.Size()) + "\n")
-
-	// print list of inputs by id
-	str := ""
-	for i, in := range n.inputs.nodes {
-		if i != 0 {
-			str += " "
-		}
-
-		str += strconv.Itoa(in.id)
+	// convert the node to a format that can be written
+	proxy := proxy_Node{
+		Size:     n.Size(),
+		InputsID: nodesToIDs(n.inputs.nodes),
 	}
-	str += "\n"
-	f.WriteString(str)
+
+	enc := json.NewEncoder(f)
+	if err = enc.Encode(proxy); err != nil {
+		f.Close()
+		return errors.Wrapf(err, "Failed to encode prody for Node %v (id: %d)\n", n, n.id)
+	}
+
+	f.Close()
+
+	if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
+		return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
+	}
 
 	return nil
 }
 
-// saves the network to the specified path, creating a directory to contain it (with permissions 0700)
+// Saves the Network, creating a directory (with permissions 0700) as the given path to contain it.
 //
-// The provided path should not have all directories already created, unless overwrite is 'true'
-//
-// if 'overwrite' is false and the directory already exists, Save will return error.
+// If overwrite is false, it will not overwrite any pre-existing directories - including the path given -
+// and will return error.
 func (net *Network) Save(dirPath string, overwrite bool) error {
-	var err error
-
 	// check if the folder already exists
-	if _, err = os.Stat(dirPath); err == nil {
+	if _, err := os.Stat(dirPath); err == nil {
 		if !overwrite {
-			return errors.Errorf("Can't save network, folder already exists, and overwrite is not enabled")
+			return errors.Errorf("Directory %s already exists, and overwrite is not enabled", dirPath)
 		}
 
-		if err = os.RemoveAll(dirPath); err != nil {
-			return errors.Errorf("Can't save network, couldn't remove pre-existing folder to overwrite")
+		if err := os.RemoveAll(dirPath); err != nil {
+			return errors.Errorf("Failed to remove pre-existing folder to overwrite")
 		}
 	}
 
-	if err = os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Wrapf(err, "Couldn't make directory to save network")
+	if err := os.MkdirAll(dirPath, 0700); err != nil {
+		return errors.Wrapf(err, "Failed to make save directory\n")
 	}
 
-	net.printMain(dirPath)
+	if err := net.writeFile(dirPath); err != nil {
+		return errors.Wrapf(err, "Failed to save network overview\n")
+	}
 
 	for _, n := range net.nodesByID {
-		if err = n.printNode(dirPath); err != nil {
-			return err // should be more descriptive
-		}
-
-		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
-			return err // should be more descriptive
+		if err := n.writeFile(dirPath); err != nil {
+			return errors.Wrapf(err, "Failed to save Node %v\n", n)
 		}
 	}
 
@@ -126,194 +128,99 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 
 // Loads the network from a version previously saved in a directory
 //
-// The provided path should be to the containing folder, the same as it would have been to Save() the network
-// 'types' and 'aux' should be maps of name of Node to their values
-// 'aux' is used to provide other information that may be necessary for certain constructors
+// The provided path should be to the containing folder, the same as it would have been to save the network
+// 'types' and 'aux' should be maps of name of Node to their Operator (for types) and any extra information
+// necessary to reconstruct that Operator (aux)
 //
-// when finished, Load calls *Network.SetOutputs to finalize the network
+// aux will be provided to Operator.Load()
 func Load(dirPath string, types map[string]Operator, aux map[string][]interface{}) (*Network, error) {
 	// check if the folder exists
 	if _, err := os.Stat(dirPath); err != nil {
-		return nil, errors.Errorf("Can't load network, containing directory does not exist")
+		return nil, errors.Errorf("Containing directory does not exist")
 	}
 
-	main, err := os.Open(dirPath + "/" + main_file + ".txt")
+	main, err := os.Open(dirPath + "/" + main_file)
 	if err != nil {
-		return nil, errors.Errorf("Can't load network, main file does not exist")
+		return nil, errors.Errorf("Overview file does not exist")
 	}
-	defer main.Close()
 
-	formatErr := errors.Errorf("Can't load network, main file is incompatible")
-	sc := bufio.NewScanner(main)
+	net_proxy := new(proxy_Network)
+	{
+		dec := json.NewDecoder(main)
+		if err := dec.Decode(net_proxy); err != nil {
+			return nil, errors.Wrapf(err, "Error encountered while decoding overview file\n")
+		}
+		main.Close()
+	}
 
 	net := new(Network)
 	net.nodesByName = make(map[string]*Node)
+	net.inputs = new(nodeGroup)
 
-	// make() net.nodesByID with correct length
-	{
-		if !sc.Scan() {
-			return nil, formatErr
+	for id := 0; id < len(net_proxy.NamesByID); id++ {
+		name := net_proxy.NamesByID[id]
+
+		f, err := os.Open(dirPath + "/" + strconv.Itoa(id) + ".node")
+		if err != nil {
+			return nil, errors.Wrapf(err, "File for node %q (id %d) does not exist\n", name, id)
 		}
 
-		var numNodes int
-		if numNodes, err = strconv.Atoi(sc.Text()); err != nil {
-			return nil, formatErr
-		}
-
-		net.nodesByID = make([]*Node, numNodes)
-	}
-
-	// get list of input and output nodes
-	var inputsByID, outputsByID []int
-	{
-		if !sc.Scan() {
-			return nil, formatErr
-		}
-
-		inStrs := strings.Split(sc.Text(), " ")
-		inputsByID = make([]int, len(inStrs))
-		for i, str := range inStrs {
-			if inputsByID[i], err = strconv.Atoi(str); err != nil {
-				return nil, formatErr
+		node_proxy := new(proxy_Node)
+		{
+			dec := json.NewDecoder(f)
+			if err := dec.Decode(node_proxy); err != nil {
+				return nil, errors.Wrapf(err, "Error encountered while decoding file for Node %q (id %d)\n", name, id)
 			}
+			f.Close()
 		}
 
-		if !sc.Scan() {
-			return nil, formatErr
+		loadType := func(n *Node) (Operator, error) {
+			return types[name], types[name].Load(n, dirPath+"/"+strconv.Itoa(id), aux[name])
 		}
 
-		outStrs := strings.Split(sc.Text(), " ")
-		outputsByID = make([]int, len(outStrs))
-		for i, str := range outStrs {
-			if outputsByID[i], err = strconv.Atoi(str); err != nil {
-				return nil, formatErr
-			}
-		}
-	}
-
-	// make all of the nodes in the network, in order by id
-	for id := range net.nodesByID {
-		if err = net.remakeNode(dirPath, id); err != nil {
-			return nil, errors.Wrapf(err, "Can't load network: failed to load node (id: %d)\n", id)
-		}
-
-		subDir := dirPath + "/" + strconv.Itoa(id)
-		n := net.nodesByID[id]
-
-		if types[n.Name] == nil {
-			return nil, errors.Errorf("Can't load network, no given Operator for node %v", n)
-		}
-		n.typ = types[n.Name]
-
-		if err = types[n.Name].Load(n, subDir, aux[n.Name]); err != nil {
-			return nil, errors.Wrapf(err, "Can't load network, failed to load Operator for node %v (id: %d)\n", n, id)
-		}
-	}
-
-	// check that the inputs to the network are the same as what has been provided
-	// -- essentially checking that everything adds up
-	for i, id := range inputsByID {
-		if net.inputs.nodes[i] != net.nodesByID[id] {
-			return nil, errors.Errorf("Network input %d (%v) does not match supposed network input (from %s.txt) (%v)", i, net.inputs.nodes[i], main_file, net.nodesByID[id])
+		if err := net.addNode(name, node_proxy, loadType); err != nil {
+			return nil, errors.Wrapf(err, "Failed to add Node to network during reconstruction\n", name, id)
 		}
 	}
 
 	// set the outputs to the network
-	{
-		outputs := make([]*Node, len(outputsByID))
-		for i, id := range outputsByID {
-			outputs[i] = net.nodesByID[id]
-		}
-
-		if err := net.SetOutputs(outputs...); err != nil {
-			return nil, errors.Wrapf(err, "Loaded network; could not set outputs\n")
-		}
+	if err := net.SetOutputs(idsToNodes(net.nodesByID, net_proxy.OutputsID)...); err != nil {
+		return nil, errors.Wrapf(err, "Could not set outputs\n")
 	}
 
 	return net, nil
 }
 
-// 'dirPath' should be the same path for the loading of the network
-// -- it should not be the path to a file
-func (net *Network) remakeNode(dirPath string, id int) error {
-	f, err := os.Open(dirPath + "/" + strconv.Itoa(id) + ".txt")
-	if err != nil {
-		return errors.Errorf("Can't load network, file for node #%d doesn't exist", id)
-	}
-
-	defer f.Close()
-
+// only error returned would be from loadType()
+func (net *Network) addNode(name string, proxy *proxy_Node, loadType func(*Node) (Operator, error)) error {
 	n := new(Node)
+	n.name = name
 	n.host = net
+	n.id = len(net.nodesByID)
 
-	sc := bufio.NewScanner(f)
-	formatErr := errors.Errorf("Can't load network, file for node #%d has wrong format", id)
+	n.inputs = new(nodeGroup)
+	n.outputs = new(nodeGroup)
 
-	// set node id - check that the id of the file matches the id of its name
-	{
-		if !sc.Scan() {
-			return formatErr
-		}
+	n.inputs.add(idsToNodes(net.nodesByID, proxy.InputsID)...)
 
-		if n.id, err = strconv.Atoi(sc.Text()); err != nil {
-			return formatErr
-		}
+	n.values = make([]float64, proxy.Size)
+	n.deltas = make([]float64, proxy.Size)
 
-		if n.id != id {
-			return errors.Errorf("Can't load network, mismatch between file name and content of node %d", id)
+	var err error
+	if n.typ, err = loadType(n); err != nil {
+		return errors.Wrapf(err, "Failed to load operator for Node %v (id %d)\n", n, n.id)
+	}
+
+	if num(n.inputs) == 0 {
+		net.inputs.add(n)
+	} else {
+		for _, in := range n.inputs.nodes {
+			in.outputs.add(n)
 		}
 	}
 
-	// set node name, size
-	{
-		if !sc.Scan() {
-			return formatErr
-		}
-		n.Name = sc.Text()
-		net.nodesByName[n.Name] = n
-
-		if !sc.Scan() {
-			return formatErr
-		}
-		size, err := strconv.Atoi(sc.Text())
-		if err != nil {
-			return formatErr
-		}
-		n.values = make([]float64, size)
-		n.deltas = make([]float64, size)
-	}
-
-	// set the inputs to l
-	{
-		if !sc.Scan() {
-			return formatErr
-		}
-
-		var ids []int
-		if sc.Text() != "" {
-			strs := strings.Split(sc.Text(), " ")
-			ids = make([]int, len(strs))
-			for i, str := range strs {
-				if ids[i], err = strconv.Atoi(str); err != nil {
-					return formatErr
-				}
-			}
-		}
-
-		if len(ids) == 0 {
-			net.inputs.add(n)
-		} else {
-			n.inputs = new(nodeGroup)
-			for i := range ids {
-				in := net.nodesByID[ids[i]]
-				n.inputs.add(in)
-
-				in.outputs.add(n)
-			}
-		}
-	}
-
-	net.nodesByID[id] = n
+	net.nodesByName[name] = n
+	net.nodesByID = append(net.nodesByID, n)
 
 	return nil
 }

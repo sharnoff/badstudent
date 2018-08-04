@@ -4,7 +4,11 @@ import ()
 
 // returns the the Name of the Node, surrounded by double quotes
 func (n *Node) String() string {
-	return "\"" + n.Name + "\""
+	return "\"" + n.name + "\""
+}
+
+func (n *Node) Name() string {
+	return n.name
 }
 
 // Returns whether or not the Node is an input node

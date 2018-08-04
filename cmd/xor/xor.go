@@ -27,7 +27,6 @@ func main() {
 		{{1, 1}, {0}},
 	}
 
-	
 	// these are the main adjustable variables
 	statusFrequency := 100
 	testFrequency := 20
@@ -148,35 +147,35 @@ func main() {
 	fmt.Println("Saving...")
 	{
 		path := "xor save"
-		if err := net.Save(path, false); err != nil {
+		if err := net.Save(path, true); err != nil {
 			panic(err.Error())
 		}
 	}
 	fmt.Println("Done!")
-	
-	// fmt.Println("Loading again...")
-	// {
-	// 	path := "xor save"
-	// 	types := map[string]badstudent.Operator {
-	// 		"input": operators.Neurons(optimizers.GradientDescent()),
-	// 		"hidden layer neurons": operators.Neurons(optimizers.GradientDescent()),
-	// 		"hidden layer logistic": operators.Logistic(),
-	// 		"output neurons": operators.Neurons(optimizers.GradientDescent()),
-	// 		"output logistic": operators.Logistic(),
-	// 	}
-	// 	// no auxiliary information necessary
-	// 	var err error
-	// 	if net, err = badstudent.Load(path, types, nil); err != nil {
-	// 		panic(err.Error())
-	// 	}
-	// }
-	// fmt.Println("Done!")
 
-	// fmt.Println("Testing, once more...")
-	// {
-	// 	_, _, err = net.Test(testData, badstudent.SquaredError(true), badstudent.CorrectRound, len(dataset))
-	// 	if err != nil {
-	// 		panic(err.Error())
-	// 	}
-	// }
+	fmt.Println("Loading again...")
+	{
+		path := "xor save"
+		types := map[string]badstudent.Operator{
+			"input":                 operators.Neurons(optimizers.GradientDescent()),
+			"hidden layer neurons":  operators.Neurons(optimizers.GradientDescent()),
+			"hidden layer logistic": operators.Logistic(),
+			"output neurons":        operators.Neurons(optimizers.GradientDescent()),
+			"output logistic":       operators.Logistic(),
+		}
+		// no auxiliary information necessary
+		var err error
+		if net, err = badstudent.Load(path, types, nil); err != nil {
+			panic(err.Error())
+		}
+	}
+	fmt.Println("Done!")
+
+	fmt.Println("Testing, once more...")
+	{
+		_, _, err = net.Test(testData, badstudent.SquaredError(true), badstudent.CorrectRound, len(dataset))
+		if err != nil {
+			panic(err.Error())
+		}
+	}
 }
