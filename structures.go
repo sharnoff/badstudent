@@ -1,8 +1,6 @@
 package badstudent
 
-import (
-	"sync"
-)
+import ()
 
 // The main structure that is used to learn to map input to output functions.
 // A Network is more of a containing structure than it is actual storage of
@@ -12,6 +10,12 @@ type Network struct {
 
 	nodesByID   []*Node
 	nodesByName map[string]*Node
+
+	// Whether or not there are changes to weights that have not been
+	// applied yet
+	hasSavedChanges bool
+
+	stat status
 }
 
 // nodeGroups are a just a collection of what would be individual functions
@@ -85,9 +89,6 @@ type Node struct {
 	// ex: for the first output node, its 'placeInOutputs' would be 0
 	placeInOutputs int
 
-	// keeps track of what has been calculated or completed for the node
-	status status_
-
-	// a lock for 'status'
-	statusMux sync.Mutex
+	// Whether or not the current task assigned by the network
+	completed bool
 }

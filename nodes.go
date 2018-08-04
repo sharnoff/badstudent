@@ -7,11 +7,17 @@ func (n *Node) String() string {
 	return "\"" + n.Name + "\""
 }
 
+// Returns whether or not the Node is an input node
+func (n *Node) IsInput() bool {
+	return num(n.inputs) == 0
+}
+
 // returns the number of values that the node has
 func (n *Node) Size() int {
 	return len(n.values)
 }
 
+// Returns the value of the Node at the specified index
 func (n *Node) Value(index int) float64 {
 	return n.values[index]
 }
@@ -64,19 +70,6 @@ func (n *Node) NumInputs() int {
 // returns the size of the given input to the node
 func (n *Node) InputSize(index int) int {
 	return n.inputs.nodes[index].Size()
-}
-
-// Returns the number of values that provide input to the node
-// before the node at the given index does
-// Can provide index of *Node.NumInputNodes(), which will return total number of inputs
-//
-// will allow the index out of bounds panic to go through if index is not in range
-func (n *Node) PreviousInputs(index int) int {
-	if index == 0 {
-		return 0
-	} else {
-		return n.inputs.sumVals[index-1]
-	}
 }
 
 // returns a single slice containing a copy of all of

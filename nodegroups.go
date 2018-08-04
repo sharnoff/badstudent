@@ -110,10 +110,6 @@ func (ng *nodeGroup) setValues(values []float64) error {
 		}
 	}
 
-	for _, n := range ng.nodes {
-		n.inputsChanged()
-	}
-
 	return nil
 }
 

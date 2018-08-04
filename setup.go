@@ -32,7 +32,6 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 
 	n := new(Node)
 	n.Name = name
-	n.status = initialized
 	n.host = net
 	n.typ = typ
 	n.id = len(net.nodesByID)
@@ -117,6 +116,9 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 		out.isOutput = true
 	}
 
+	net.outputs = new(nodeGroup)
+	net.outputs.add(outputs...)
+
 	if err := net.checkOutputs(); err != nil {
 		return err
 	}
@@ -130,8 +132,10 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 		numOutValues += out.Size()
 	}
 
-	net.outputs = new(nodeGroup)
-	net.outputs.add(outputs...)
+	// Slightly reduce memory usage
+	for _, n := range net.nodesByID {
+		n.outputs.trim()
+	}
 
 	// remove the unused space at the end of slices
 	net.inputs.trim()
@@ -139,6 +143,8 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 	// allocate single slices for inputs and outputs
 	net.inputs.makeContinuous()
 	net.outputs.makeContinuous()
+
+	net.stat = finalized
 
 	return nil
 }

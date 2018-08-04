@@ -1,135 +1,103 @@
 package badstudent
 
-// internal management of the steps of evaluation and correction
-
 import (
 	"github.com/pkg/errors"
 )
 
-type status_ int8
+type status int8
 
 const (
-	initialized  status_ = iota // 0
-	checkOuts    status_ = iota // 1
-	changed      status_ = iota // 2
-	evaluated    status_ = iota // 3
-	deltas       status_ = iota // 4
-	adjusted     status_ = iota // 5
-	weightsAdded status_ = iota // 6
+	initialized status = iota // 0
+	finalized   status = iota // 1
+	evaluated   status = iota // 2
+	deltas      status = iota // 3
+	adjusted    status = iota // 4
 )
 
-// soon to be removed
-const bias_value float64 = 1
+// Sets all Nodes' field 'completed' to false
+func (net *Network) resetCompletion() {
+	for _, n := range net.nodesByID {
+		n.completed = false
+	}
+}
 
-// checks that the Node (and none of its outputs) don't affect
-// the outputs of the network
-//
-// returns error if n.isOutput == false but len(n.outputs) == 0
-//
-// recurses towards outputs
-func (n *Node) checkOutputs() error {
-	n.statusMux.Lock()
-	defer n.statusMux.Unlock()
-	if n.status >= checkOuts {
+// Checks that all Nodes affect the outputs of the network
+func (net *Network) checkOutputs() error {
+	if net.stat >= finalized {
 		return nil
 	}
 
-	if num(n.outputs) == 0 && !n.isOutput {
-		return errors.Errorf("Checked outputs; node %v has no effect on network outputs (has no outputs and is not a network output)\n", n)
-	}
-
-	// remove the unused space at the end of slices
-	n.outputs.trim()
-
-	for i, out := range n.outputs.nodes {
-		if err := out.checkOutputs(); err != nil {
-			return errors.Wrapf(err, "Checking outputs of output %d to node %v (%v) failed\n", i, n, out)
+	var mark func(*Node)
+	mark = func(n *Node) {
+		if n.completed {
+			return
 		}
-	}
 
-	n.status = checkOuts
-	return nil
-}
+		n.completed = true
 
-// checks the outputs of all nodes in the network
-func (net *Network) checkOutputs() error {
-	for i, in := range net.inputs.nodes {
-		if err := in.checkOutputs(); err != nil {
-			return errors.Wrapf(err, "Failed to check outputs of network input %v (#%d)\n", in, i)
+		for _, in := range n.inputs.nodes {
+			mark(in)
 		}
-	}
 
-	return nil
-}
-
-// acts as a 'reset button' for the node,
-// signifying that it now will need to perform its operations again
-//
-// calls recursively on outputs
-func (n *Node) inputsChanged() {
-	n.statusMux.Lock()
-	if n.status < evaluated {
-		n.statusMux.Unlock()
 		return
 	}
 
-	n.status = changed
-	n.statusMux.Unlock()
-
-	for _, out := range n.outputs.nodes {
-		out.inputsChanged()
+	// Mark all Nodes that affect the network outputs.
+	for _, out := range net.outputs.nodes {
+		mark(out)
 	}
+
+	// If any Nodes don't affect outputs, return error
+	for _, n := range net.nodesByID {
+		if n.completed == false {
+			return errors.Errorf("Node %v does not affect Network outputs", n)
+		}
+	}
+
+	net.resetCompletion()
+	return nil
 }
 
-// sets the inputs of the network to the provided values
-// returns an error if the length of the provided values doesn't
-// match the size of the network inputs
-func (net *Network) SetInputs(inputs []float64) error {
-	return net.inputs.setValues(inputs)
-}
-
-// updates the values of the node so that they are accurate, given the inputs
-//
-// calls recursively on inputs before running
+// Recursively calls itself on inputs to the Node before running evaluating
 func (n *Node) evaluate() error {
-	n.statusMux.Lock()
-	defer n.statusMux.Unlock()
-	if n.status >= evaluated && n.status != weightsAdded {
+	if n.completed {
 		return nil
-	} else if num(n.inputs) == 0 {
-		n.status = evaluated
+	} else if n.IsInput() {
+		n.completed = true
 		return nil
 	}
 
-	for i, in := range n.inputs.nodes {
+	for _, in := range n.inputs.nodes {
 		if err := in.evaluate(); err != nil {
-			return errors.Wrapf(err, "Can't evaluate node %v, evaluating input %v (#%d) failed\n", n, in, i)
+			return errors.Wrapf(err, "Evaluating Node %v failed\n", in)
 		}
 	}
 
 	if err := n.typ.Evaluate(n, n.values); err != nil {
-		return errors.Wrapf(err, "Couldn't evaluate node %v, Operation evaluation failed\n", n)
+		return errors.Wrapf(err, "Operator evaluation failed\n")
 	}
 
-	n.status = evaluated
+	n.completed = true
 	return nil
 }
 
-// Returns a copy of the output values of the Network, given the inputs
-//
-// Returns an error if it can't the given inputs to be the network's
-func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
-	if err := net.SetInputs(inputs); err != nil {
-		return nil, errors.Wrapf(err, "Couldn't get outputs; setting inputs failed.\n")
+// Changes the values of the Nodes so that they accurately reflect the inputs
+func (net *Network) evaluate() error {
+	if net.stat < finalized {
+		return errors.Errorf("Network is not complete")
+	} else if net.stat >= evaluated {
+		return nil
 	}
 
-	for i, out := range net.outputs.nodes {
+	for _, out := range net.outputs.nodes {
 		if err := out.evaluate(); err != nil {
-			return nil, errors.Wrapf(err, "Can't get outputs, network output node %v (#%d) failed to evaluate\n", out, i)
+			return errors.Wrapf(err, "Evaluating Network output Node %v failed\n", out)
 		}
 	}
 
-	return net.outputs.getValues(true), nil
+	net.resetCompletion()
+	net.stat = evaluated
+	return nil
 }
 
 // Calculates the deltas for each value of the node
@@ -137,73 +105,61 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 // Calls inputDeltas() on outputs in order to run (which in turn calls getDeltas())
 // deltasMatter is: do the deltas of this node actually need to be calculated, or should this
 // just pass the recursion to its outputs
-func (n *Node) getDeltas(rangeCostDeriv func(int, int, func(int, float64)) error, deltasMatter bool) error {
-
+func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error, deltasMatter bool) error {
 	deltasMatter = deltasMatter || n.typ.CanBeAdjusted(n)
 
-	n.statusMux.Lock()
-	defer n.statusMux.Unlock()
-	if n.status < evaluated {
-		return errors.Errorf("Can't get deltas of node %v, has not been evaluated", n)
-	} else if n.status >= deltas && !(deltasMatter && !n.deltasActuallyCalculated) { // REWORK
+	if n.completed {
+		if !deltasMatter || n.deltasActuallyCalculated {
+			return nil
+		}
+	} else if !deltasMatter {
+		n.deltasActuallyCalculated = false
+		n.completed = true
+
+		for _, out := range n.outputs.nodes {
+			if err := out.getDeltas(cfDeriv, false); err != nil {
+				return errors.Wrapf(err, "Getting deltas of Node %v failed\n", out)
+			}
+		}
+
 		return nil
 	}
 
-	if !deltasMatter {
-		for i, out := range n.outputs.nodes {
-			if err := out.getDeltas(rangeCostDeriv, deltasMatter); err != nil { // deltasMatter = false
-				return errors.Wrapf(err, "Can't pass on getting deltas from node %v, getting deltas of node %v (output %d) failed\n", n, out, i)
-			}
-		}
-	} else {
-		add := func(index int, addition float64) {
-			n.deltas[index] += addition
-		}
-
-		// reset all of the values
-		n.deltas = make([]float64, len(n.values))
-
-		if n.isOutput {
-			if err := rangeCostDeriv(0, len(n.values), add); err != nil {
-				return errors.Wrapf(err, "Can't get deltas of output node %v, rangeCostDeriv() failed\n", n)
-			}
-		}
-
-		for i, out := range n.outputs.nodes {
-			if err := out.inputDeltas(n, add, rangeCostDeriv); err != nil {
-				return errors.Wrapf(err, "Can't get deltas of node %v, input deltas from node %v (output %d) failed\n", n, out, i)
-			}
-		}
-
-		n.deltasActuallyCalculated = true
+	add := func(index int, addition float64) {
+		n.deltas[index] += addition
 	}
 
-	n.status = deltas
+	// reset the values of the deltas
+	n.deltas = make([]float64, len(n.values))
+	if n.isOutput {
+		if err := cfDeriv(n.placeInOutputs, n.placeInOutputs+len(n.values), add); err != nil {
+			return errors.Wrapf(err, "Getting derivatives of cost function failed\n")
+		}
+	}
+
+	for _, out := range n.outputs.nodes {
+		if err := out.inputDeltas(n, add, cfDeriv); err != nil {
+			return errors.Wrapf(err, "Getting input deltas of Node %v from Node %v failed\n", out, n)
+		}
+	}
+
+	n.deltasActuallyCalculated = true
+	n.completed = true
 	return nil
 }
 
 // provides the deltas of each value to getDeltas()
-//
 // calls getDeltas() of self before running
-func (n *Node) inputDeltas(input *Node, add func(int, float64), rangeCostDeriv func(int, int, func(int, float64)) error) error {
-	n.statusMux.Lock()
-	if n.status < evaluated {
-		n.statusMux.Unlock()
-		return errors.Errorf("Can't provide input deltas of node %v (to %v), has not been evaluated", n, input)
+//
+// Doesn't mark complete or not because this could be called multiple times for multiple inputs
+func (n *Node) inputDeltas(input *Node, add func(int, float64), cfDeriv func(int, int, func(int, float64)) error) error {
+
+	// does the checking for us; if it's already done it won't go again
+	if err := n.getDeltas(cfDeriv, true); err != nil {
+		return errors.Errorf("Getting deltas of Node %v failed\n", n)
 	}
 
-	if n.status < deltas {
-		// unlock status so that getDeltas() can lock it
-		n.statusMux.Unlock()
-
-		if err := n.getDeltas(rangeCostDeriv, true); err != nil { // deltasMatter = true
-			return errors.Wrapf(err, "Can't provide input deltas of node %v (to %v), getting own deltas failed\n", n, input)
-		}
-
-		n.statusMux.Lock()
-	}
-
-	// find the index in 'n.inputs' that 'input' is. If not there, return error
+	// find the index in the inputs of 'n' that 'input' is.
 	inputIndex := -1
 	for i, in := range n.inputs.nodes {
 		if in == input {
@@ -211,85 +167,92 @@ func (n *Node) inputDeltas(input *Node, add func(int, float64), rangeCostDeriv f
 			break
 		}
 	}
-
 	if inputIndex == -1 {
 		return errors.Errorf("Can't provide input deltas of node %v to %v, %v is not an input of %v", n, input, input, n)
 	}
 
-	start := n.PreviousInputs(inputIndex)
-	end := start + n.InputSize(inputIndex)
+	end := n.inputs.sumVals[inputIndex]
+	start := end - input.Size()
 
 	if err := n.typ.InputDeltas(n, add, start, end); err != nil {
-		return errors.Wrapf(err, "Couldn't provide input deltas of node %v to %v (#%d), Operator failed to get input deltas\n", n, input, inputIndex)
+		return errors.Wrapf(err, "Operator input delta calculation failed\n")
 	}
 
-	n.statusMux.Unlock()
 	return nil
 }
 
-// recurses to inputs after running
-// α
-func (n *Node) adjust(learningRate float64, saveChanges bool) error {
-	n.statusMux.Lock()
-	if n.status < deltas {
-		n.statusMux.Unlock()
-		return errors.Errorf("Can't adjust node %v, has not calculated deltas", n)
-	} else if n.status >= adjusted {
-		n.statusMux.Unlock()
+// Calculates the deltas of all of the Nodes in the Network whose deltas
+// must be calculated
+func (net *Network) getDeltas(cfDeriv func(int, int, func(int, float64)) error) error {
+	if net.stat < evaluated {
+		return errors.Errorf("Network must be evaluated before getting deltas")
+	} else if net.stat >= deltas {
 		return nil
-	} else if n.inputs == nil {
-		n.status = adjusted
-		n.statusMux.Unlock()
+	}
+
+	for _, in := range net.inputs.nodes {
+		in.getDeltas(cfDeriv, false)
+	}
+
+	net.stat = deltas
+	net.resetCompletion()
+	return nil
+}
+
+func (n *Node) adjust(learningRate float64, saveChanges bool) error {
+	if n.IsInput() {
 		return nil
 	}
 
 	if err := n.typ.Adjust(n, learningRate, saveChanges); err != nil {
-		return errors.Wrapf(err, "Couldn't adjust node %v, Operator adjusting failed\n", n)
-	}
-
-	n.status = adjusted
-	n.statusMux.Unlock()
-
-	for i, in := range n.inputs.nodes {
-		if err := in.adjust(learningRate, saveChanges); err != nil {
-			return errors.Wrapf(err, "Failed to recurse after adjusting weights to node %v (input %d) from node %v\n", in, i, n)
-		}
+		return errors.Wrapf(err, "Operator adjustment failed\n")
 	}
 
 	return nil
 }
 
-// recurses to inputs after running
+// Does not use completion to track progress
+func (net *Network) adjust(learningRate float64, saveChanges bool) error {
+	if net.stat < deltas {
+		return errors.Errorf("Network must have deltas calculated before adjusting weights")
+	}
+
+	for _, n := range net.nodesByID {
+		if err := n.adjust(learningRate, saveChanges); err != nil {
+			return errors.Wrapf(err, "Failed to adjust Node %v\n", n)
+		}
+	}
+
+	if saveChanges {
+		net.hasSavedChanges = true
+	}
+
+	net.stat = adjusted
+	return nil
+}
+
 func (n *Node) addWeights() error {
-	n.statusMux.Lock()
-	if n.status >= weightsAdded {
-		n.statusMux.Unlock()
+	if err := n.typ.AddWeights(n); err != nil {
+		return errors.Wrapf(err, "Operator failed to add weights\n", n)
+	}
+
+	return nil
+}
+
+// Updates the weights in the network with any previously saved changes.
+// Only runs if there are changes that have not been applied
+func (net *Network) AddWeights() error {
+	if !net.hasSavedChanges {
 		return nil
 	}
 
-	if err := n.typ.AddWeights(n); err != nil {
-		return errors.Wrapf(err, "Couldn't add weights for node %v, Operator failed to add weights\n", n)
-	}
-
-	n.status = weightsAdded
-	n.statusMux.Unlock()
-
-	for i, in := range n.inputs.nodes {
-		if err := in.addWeights(); err != nil {
-			return errors.Wrapf(err, "Failed to recurse to %v (input %d) after adding weights of node %v\n", in, i, n)
+	for _, n := range net.nodesByID {
+		if err := n.addWeights(); err != nil {
+			return errors.Wrapf(err, "Failed to add weights of Node %v\n", n)
 		}
 	}
 
-	return nil
-}
-
-// Updates the weights in the newtork with any previously delayed changes
-func (net *Network) AddWeights() error {
-	for i, out := range net.outputs.nodes {
-		if err := out.addWeights(); err != nil {
-			return errors.Wrapf(err, "Couldn't add weights of network, output node %v (#%d) failed to add weights\n", out, i)
-		}
-	}
-
+	net.hasSavedChanges = false
+	net.stat = finalized
 	return nil
 }

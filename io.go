@@ -245,7 +245,6 @@ func (net *Network) remakeNode(dirPath string, id int) error {
 
 	n := new(Node)
 	n.host = net
-	n.status = initialized
 
 	sc := bufio.NewScanner(f)
 	formatErr := errors.Errorf("Can't load network, file for node #%d has wrong format", id)
