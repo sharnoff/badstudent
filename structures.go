@@ -11,6 +11,10 @@ type Network struct {
 	nodesByID   []*Node
 	nodesByName map[string]*Node
 
+	// Whether or not there is the possibility of there being a loop in the
+	// passage of values from Node to Node
+	mayHaveLoop bool
+
 	// Whether or not there are changes to weights that have not been
 	// applied yet
 	hasSavedChanges bool

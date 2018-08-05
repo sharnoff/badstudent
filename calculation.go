@@ -27,34 +27,82 @@ func (net *Network) checkOutputs() error {
 		return nil
 	}
 
-	var mark func(*Node)
-	mark = func(n *Node) {
-		if n.completed {
+	// Check all nodes affect outputs
+	{
+		var mark func(*Node)
+		mark = func(n *Node) {
+			if n.completed {
+				return
+			}
+
+			n.completed = true
+
+			for _, in := range n.inputs.nodes {
+				mark(in)
+			}
+
 			return
 		}
 
-		n.completed = true
-
-		for _, in := range n.inputs.nodes {
-			mark(in)
+		// Mark all Nodes that affect the network outputs.
+		for _, out := range net.outputs.nodes {
+			mark(out)
 		}
 
-		return
+		// If any Nodes don't affect outputs, return error
+		for _, n := range net.nodesByID {
+			if n.completed == false {
+				return errors.Errorf("Node %v does not affect Network outputs", n)
+			}
+		}
+
+		net.resetCompletion()
 	}
 
-	// Mark all Nodes that affect the network outputs.
-	for _, out := range net.outputs.nodes {
-		mark(out)
-	}
+	// Check that there are no loops (with no delay) --> delay will be added later
+	if net.mayHaveLoop {
+		var check func(*Node, int) error
 
-	// If any Nodes don't affect outputs, return error
-	for _, n := range net.nodesByID {
-		if n.completed == false {
-			return errors.Errorf("Node %v does not affect Network outputs", n)
+		for _, root := range net.nodesByID {
+			if root.IsInput() {
+				continue
+			}
+
+			delays := make(map[*Node]int)
+
+			check = func(n *Node, depth int) error {
+				if n.completed && depth >= delays[n] {
+					return nil
+				}
+
+				if n == root {
+					if depth == 0 {
+						return errors.Errorf("Node %v recieves input from itself with no delay", root)
+					}
+
+					return nil
+				} else {
+					delays[n] = depth
+					n.completed = true
+
+					for _, out := range n.outputs.nodes {
+						if err := check(out, depth); err != nil {
+							return err
+						}
+					}
+
+					return nil
+				}
+			}
+
+			for _, out := range root.outputs.nodes {
+				check(out, 0)
+			}
+
+			net.resetCompletion()
 		}
 	}
 
-	net.resetCompletion()
 	return nil
 }
 

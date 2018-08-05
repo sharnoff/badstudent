@@ -16,6 +16,12 @@ func (n *Node) IsInput() bool {
 	return num(n.inputs) == 0
 }
 
+// Returns whether or not the Node is a placeholder Node
+// Returns false if it never was, returns false if it has been replaced
+func (n *Node) IsPlaceholder() bool {
+	return n.host.stat == initialized && !n.completed
+}
+
 // returns the number of values that the node has
 func (n *Node) Size() int {
 	return len(n.values)

@@ -157,6 +157,8 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	net.nodesByName = make(map[string]*Node)
 	net.inputs = new(nodeGroup)
 
+	inputsPerNodeID := make([][]int, len(net_proxy.NamesByID))
+
 	for id := 0; id < len(net_proxy.NamesByID); id++ {
 		name := net_proxy.NamesByID[id]
 
@@ -174,12 +176,20 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 			f.Close()
 		}
 
-		loadType := func(n *Node) (Operator, error) {
-			return types[name], types[name].Load(n, dirPath+"/"+strconv.Itoa(id), aux[name])
+		inputsPerNodeID[id] = node_proxy.InputsID
+		if _, err := net.Placeholder(name, node_proxy.Size); err != nil {
+			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", name, id)
+		}
+	}
+
+	for id, n := range net.nodesByID {
+		if types[n.name] == nil {
+			return nil, errors.Errorf("No Operator given for Node %v (id %d)", n, id)
 		}
 
-		if err := net.addNode(name, node_proxy, loadType); err != nil {
-			return nil, errors.Wrapf(err, "Failed to add Node to network during reconstruction\n", name, id)
+		err = n.loadReplace(types[n.name], aux[n.name], dirPath+"/"+strconv.Itoa(id), idsToNodes(net.nodesByID, inputsPerNodeID[id]))
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", n.name, id)
 		}
 	}
 
@@ -191,36 +201,29 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	return net, nil
 }
 
-// only error returned would be from loadType()
-func (net *Network) addNode(name string, proxy *proxy_Node, loadType func(*Node) (Operator, error)) error {
-	n := new(Node)
-	n.name = name
-	n.host = net
-	n.id = len(net.nodesByID)
-
-	n.inputs = new(nodeGroup)
-	n.outputs = new(nodeGroup)
-
-	n.inputs.add(idsToNodes(net.nodesByID, proxy.InputsID)...)
-
-	n.values = make([]float64, proxy.Size)
-	n.deltas = make([]float64, proxy.Size)
-
-	var err error
-	if n.typ, err = loadType(n); err != nil {
-		return errors.Wrapf(err, "Failed to load operator for Node %v (id %d)\n", n, n.id)
-	}
-
-	if num(n.inputs) == 0 {
-		net.inputs.add(n)
-	} else {
-		for _, in := range n.inputs.nodes {
-			in.outputs.add(n)
+func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, inputs []*Node) error {
+	for _, in := range inputs {
+		if in.id > n.id {
+			n.host.mayHaveLoop = true
 		}
 	}
 
-	net.nodesByName[name] = n
-	net.nodesByID = append(net.nodesByID, n)
+	n.inputs = new(nodeGroup)
+	n.inputs.add(inputs...)
+
+	if err := typ.Load(n, path, aux); err != nil {
+		return errors.Wrapf(err, "Initializing Operator failed\n", n)
+	}
+
+	n.typ = typ
+
+	if len(inputs) == 0 {
+		n.host.inputs.add(n)
+	}
+
+	for _, in := range inputs {
+		in.outputs.add(n)
+	}
 
 	return nil
 }
