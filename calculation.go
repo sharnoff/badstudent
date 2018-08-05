@@ -179,7 +179,7 @@ func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error, delta
 
 	// reset the values of the deltas
 	n.deltas = make([]float64, len(n.values))
-	if n.isOutput {
+	if n.IsOutput() {
 		if err := cfDeriv(n.placeInOutputs, n.placeInOutputs+len(n.values), add); err != nil {
 			return errors.Wrapf(err, "Getting derivatives of cost function failed\n")
 		}

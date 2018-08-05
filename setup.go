@@ -58,6 +58,7 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 	n.name = name
 	n.host = net
 	n.id = len(net.nodesByID)
+	n.placeInOutputs = -1
 
 	n.outputs = new(nodeGroup)
 
@@ -141,7 +142,7 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 		if !allGood {
 			for _, out := range outputs {
 				if out != nil {
-					out.isOutput = false
+					out.placeInOutputs = -1
 				}
 			}
 		}
@@ -163,7 +164,7 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 			}
 		}
 
-		out.isOutput = true
+		out.placeInOutputs = 0 // mark as having a place in outputs
 	}
 
 	net.outputs = new(nodeGroup)

@@ -85,10 +85,6 @@ type Node struct {
 	// The set of Nodes that this Node outputs to
 	outputs *nodeGroup
 
-	// whether or not the node's values are part of the set of
-	// output values to the network
-	isOutput bool
-
 	// what index in the network outputs the values of the node start at
 	// ex: for the first output node, its 'placeInOutputs' would be 0
 	placeInOutputs int
