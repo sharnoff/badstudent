@@ -16,6 +16,7 @@ type proxy_Network struct {
 type proxy_Node struct {
 	Size     int
 	InputsID []int
+	Delay    int
 }
 
 func nodesToIDs(nodes []*Node) []int {
@@ -76,6 +77,7 @@ func (n *Node) writeFile(dirPath string) error {
 	proxy := proxy_Node{
 		Size:     n.Size(),
 		InputsID: nodesToIDs(n.inputs.nodes),
+		Delay: n.Delay(),
 	}
 
 	enc := json.NewEncoder(f)
@@ -158,6 +160,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	net.inputs = new(nodeGroup)
 
 	inputsPerNodeID := make([][]int, len(net_proxy.NamesByID))
+	delays := make([]int, len(net_proxy.NamesByID))
 
 	for id := 0; id < len(net_proxy.NamesByID); id++ {
 		name := net_proxy.NamesByID[id]
@@ -177,6 +180,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 		}
 
 		inputsPerNodeID[id] = node_proxy.InputsID
+		delays[id] = node_proxy.Delay
 		if _, err := net.Placeholder(name, node_proxy.Size); err != nil {
 			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", name, id)
 		}
@@ -187,7 +191,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 			return nil, errors.Errorf("No Operator given for Node %v (id %d)", n, id)
 		}
 
-		err = n.loadReplace(types[n.name], aux[n.name], dirPath+"/"+strconv.Itoa(id), idsToNodes(net.nodesByID, inputsPerNodeID[id]))
+		err = n.loadReplace(types[n.name], aux[n.name], dirPath+"/"+strconv.Itoa(id), delays[id], idsToNodes(net.nodesByID, inputsPerNodeID[id]))
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", n.name, id)
 		}
@@ -201,7 +205,7 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	return net, nil
 }
 
-func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, inputs []*Node) error {
+func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, delay int, inputs []*Node) error {
 	for _, in := range inputs {
 		if in.id > n.id {
 			n.host.mayHaveLoop = true
@@ -216,6 +220,17 @@ func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, inputs 
 	}
 
 	n.typ = typ
+	
+	n.delay = make(chan []float64, delay)
+	n.delayDeltas = make(chan []float64, delay)
+	for i := 0; i < delay; i++ {
+		n.delay <- make([]float64, len(n.values))
+		n.delayDeltas <- make([]float64, len(n.values))
+	}
+
+	if delay != 0 {
+		n.host.hasDelay = true
+	}
 
 	if len(inputs) == 0 {
 		n.host.inputs.add(n)

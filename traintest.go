@@ -230,6 +230,9 @@ func (net *Network) Train(args TrainArgs) {
 
 	var changesDelayed bool
 
+	var recurrentTargets [][]float64
+	var recurrentLearningRates []float64
+
 	for args.RunCondition(iteration, lastCost) {
 
 		if args.SendStatus(iteration) && iteration != 0 {
@@ -271,6 +274,12 @@ func (net *Network) Train(args TrainArgs) {
 
 				changesDelayed = false
 			}
+
+			if net.hasDelay {
+				if err := net.adjustRecurrent(recurrentTargets, args.CostFunc, recurrentLearningRates); err != nil {
+					*args.Err = errors.Wrapf(err, "Failed to adjust recurrent network at the start of a new batch\n")
+				}
+			}
 		}
 
 		if saveChanges {
@@ -305,10 +314,23 @@ func (net *Network) Train(args TrainArgs) {
 			}
 
 			var err error
-			cost, outs, err = net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, lastCost), args.CostFunc, saveChanges)
-			if err != nil {
-				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed on iteration %d\n", iteration)
-				return
+			if !net.hasDelay {
+				cost, outs, err = net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, lastCost), args.CostFunc, saveChanges)
+				if err != nil {
+					*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed on iteration %d\n", iteration)
+					return
+				}
+			} else {
+				if outs, err = net.GetOutputs(d.Inputs); err != nil {
+					*args.Err = errors.Wrapf(err, "Failed too get outputs on iteration %d\n", iteration)
+					return
+				}
+
+				if cost, err = args.CostFunc.Cost(outs, d.Outputs); err != nil {
+					*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
+				}
+
+
 			}
 
 			correct = args.IsCorrect(outs, d.Outputs)
@@ -333,6 +355,10 @@ func (net *Network) Train(args TrainArgs) {
 				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights after finishing training (iteration %d) failed\n", iteration)
 				return
 			}
+		}
+
+		if net.hasDelay {
+			net.clearDelays()
 		}
 
 		if args.SendStatus(iteration) && iteration != 0 {

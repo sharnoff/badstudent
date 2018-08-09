@@ -21,6 +21,14 @@ func (n *Node) IsOutput() bool {
 	return n.placeInOutputs >= 0
 }
 
+func (n *Node) Delay() int {
+	if n.delay == nil {
+		return 0
+	}
+
+	return cap(n.delay)
+}
+
 // Returns whether or not the Node is a placeholder Node
 // Returns false if it never was, returns false if it has been replaced
 func (n *Node) IsPlaceholder() bool {

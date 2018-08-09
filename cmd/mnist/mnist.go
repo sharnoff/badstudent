@@ -161,7 +161,7 @@ func main() {
 	// fmt.Println("Initializing network...")
 	net := new(badstudent.Network)
 	{
-		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize)
+		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize, 0)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -173,7 +173,7 @@ func main() {
 			ZeroPadding: []int{2, 2},
 			Biases:      true,
 		}
-		if l, err = net.Add("conv-1", operators.Convolution(&convArgs, optimizers.GradientDescent()), 784, l); err != nil {
+		if l, err = net.Add("conv-1", operators.Convolution(&convArgs, optimizers.GradientDescent()), 784, 0, l); err != nil {
 			panic(err.Error())
 		}
 
@@ -183,19 +183,19 @@ func main() {
 			Filter:    []int{2, 2},
 			Stride:    []int{2, 2},
 		}
-		if l, err = net.Add("pool-1", operators.AvgPool(&poolArgs), 196, l); err != nil {
+		if l, err = net.Add("pool-1", operators.AvgPool(&poolArgs), 196, 0, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("pool-1 logistic", operators.Logistic(), 196, l); err != nil {
+		if l, err = net.Add("pool-1 logistic", operators.Logistic(), 196, 0, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, l); err != nil {
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, 0, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output logistic", operators.Logistic(), 10, l); err != nil {
+		if l, err = net.Add("output logistic", operators.Logistic(), 10, 0, l); err != nil {
 			panic(err.Error())
 		}
 

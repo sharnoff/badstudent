@@ -21,7 +21,7 @@ func (net *Network) init() {
 // The name of each node must be unique, cannot be "", and cannot contain a double-quote (")
 //
 // if Add returns an error, the host Network will not have been changed
-func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*Node, error) {
+func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*Node) (*Node, error) {
 	n, err := net.Placeholder(name, size)
 	if err != nil {
 		// remove the effects of making the placeholder
@@ -30,7 +30,7 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 		return n, err
 	}
 
-	if err := n.Replace(typ, inputs...); err != nil {
+	if err := n.Replace(typ, delay, inputs...); err != nil {
 		net.nodesByName[name] = nil
 		net.nodesByID = net.nodesByID[:n.id]
 		return n, err
@@ -74,13 +74,17 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 // Sets the inputs and Operator of a placeholder Node
 //
 // Network must still be in construction
-func (n *Node) Replace(typ Operator, inputs ...*Node) error {
+func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
 	if n.host.stat > initialized {
 		return errors.Errorf("Network has finished construction")
 	} else if !n.IsPlaceholder() {
 		return errors.Errorf("Node is not a placeholder")
 	} else if typ == nil {
 		return errors.Errorf("Operator is nil")
+	} else if delay < 0 {
+		return errors.Errorf("Node must have delay of 0 or above")
+	} else if len(inputs) == 0 && delay > 0 {
+		return errors.Errorf("Input nodes cannot have delay (delay = %d)", delay)
 	}
 
 	for _, in := range inputs {
@@ -105,6 +109,17 @@ func (n *Node) Replace(typ Operator, inputs ...*Node) error {
 	}
 
 	n.typ = typ
+
+	n.delay = make(chan []float64, delay)
+	n.delayDeltas = make(chan []float64, delay)
+	for i := 0; i < delay; i++ {
+		n.delay <- make([]float64, len(n.values))
+		n.delayDeltas <- make([]float64, len(n.values))
+	}
+
+	if delay != 0 {
+		n.host.hasDelay = true
+	}
 
 	if len(inputs) == 0 {
 		n.host.inputs.add(n)

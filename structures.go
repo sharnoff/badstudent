@@ -19,6 +19,10 @@ type Network struct {
 	// applied yet
 	hasSavedChanges bool
 
+	// Whether or not there are any Nodes in the Network with delay.
+	// If there are, a different protocol must be followed
+	hasDelay bool
+
 	stat status
 }
 
@@ -88,6 +92,10 @@ type Node struct {
 	// what index in the network outputs the values of the node start at
 	// ex: for the first output node, its 'placeInOutputs' would be 0
 	placeInOutputs int
+
+	delay        chan []float64
+	delayDeltas  chan []float64
+	storedValues [][]float64
 
 	// Whether or not the current task assigned by the network
 	completed bool
