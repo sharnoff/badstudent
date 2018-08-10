@@ -13,7 +13,7 @@ import (
 func CorrectRound(outs, targets []float64) bool {
 	for i := range outs {
 		// rounds to 0 if a number is < 0.5, 1 if ≥ 0.5. Tanh reduces the value to (0, 1)
-		if math.Round(0.5 * (1 + math.Tanh(outs[i] - 0.5))) != targets[i] {
+		if math.Round(0.5*(1+math.Tanh(outs[i]-0.5))) != targets[i] {
 			return false
 		}
 	}
@@ -87,43 +87,11 @@ func ConstantRate(learningRate float64) func(int, float64) float64 {
 	}
 }
 
-// Returns a function that acts as a TrainArgs.SendStatus
-// 'frequency' is in units of iterations
+// Returns a function that satisfies multiple fields in TrainArgs
 //
 // returns (iteration % frequency == 0)
 func Every(frequency int) func(int) bool {
 	return func(iteration int) bool {
 		return iteration%frequency == 0
-	}
-}
-
-// Returns a function that acts as a TrainArgs.Batch
-// 'frequency is in units of iterations
-//
-// this function is similar to Every(), and self-explanatory from viewing the source
-func BatchEvery(frequency int) func(int) (bool, bool) {
-	if frequency == 1 {
-		return func(iteration int) (bool, bool) {
-			return true, false
-		}
-	} else {
-		return func(iteration int) (bool, bool) {
-			return (iteration%frequency == 0), true
-		}
-	}
-}
-
-// Returns a function that acts as a TrainArgs.ShouldTest
-// 'frequency' is in units of iterations
-// 'amount' is the quantity of test data that will be tested on
-//
-// this function is similar to Every(), and self-explanatory from viewing the source
-func TestEvery(frequency, amount int) func(int) int {
-	return func(iteration int) int {
-		if iteration%frequency == 0 {
-			return amount
-		}
-
-		return 0
 	}
 }

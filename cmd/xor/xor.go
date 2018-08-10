@@ -21,36 +21,38 @@ func format(fs ...float64) (str string) {
 
 const (
 	statusFrequency int = 100
-	testFrequency int = 20
+	testFrequency   int = 20
 
 	// main hyperparameters
-	learningRate float64 = 1.
-	batchSize int = 4
-	maxIterations int = 3000
+	learningRate  float64 = 0.3
+	batchSize     int     = 1
+	maxIterations int     = 3000
 
 	// where to save/load the network
 	path string = "xor save"
 )
 
 func train(net *bs.Network, dataset [][][]float64) {
-	trainData, err := bs.DataCh(dataset, true)
+	trainData, err := bs.Data(dataset, bs.Every(batchSize))
 	if err != nil {
 		panic(err.Error())
 	}
 
-	testData, err := bs.DataCh(dataset, false)
-	if err != nil {
-		panic(err.Error())
-	}
+	// testBatch := func(i int) bool {
+	// 	return (i % len(dataset) == len(dataset)-1)
+	// }
+	// testData, err := bs.Data(dataset, testBatch)
+	// if err != nil {
+	// 	panic(err.Error())
+	// }
 
 	res := make(chan bs.Result)
 
 	args := bs.TrainArgs{
-		Data:         trainData,
-		TestData:     testData,
-		ShouldTest:   bs.TestEvery(testFrequency, len(dataset)),
+		Data: trainData,
+		// TestData:     testData,
+		// ShouldTest:   bs.Every(testFrequency),
 		SendStatus:   bs.Every(statusFrequency),
-		Batch:        bs.BatchEvery(batchSize),
 		RunCondition: bs.TrainUntil(maxIterations),
 		LearningRate: bs.ConstantRate(learningRate),
 		// IsCorrect: bs.CorrectRound,
@@ -61,7 +63,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 
 	fmt.Println("Starting training...")
 	go net.Train(args)
-	fmt.Println("Iteration, Status Cost, Status Percent, Test Cost, Test Percent")
+	fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
 
 	// statusCost, statusPercent, testCost, testPercent
 	results := make([]float64, 4)
@@ -76,11 +78,11 @@ func train(net *bs.Network, dataset [][][]float64) {
 		}
 
 		if r.IsTest {
-			results[2] = r.Avg
-			results[3] = r.Percent
+			results[2] = r.Cost
+			results[3] = r.Correct * 100
 		} else {
-			results[0] = r.Avg
-			results[1] = r.Percent
+			results[0] = r.Cost
+			results[1] = r.Correct * 100
 		}
 
 		previousIteration = r.Iteration
@@ -95,13 +97,16 @@ func train(net *bs.Network, dataset [][][]float64) {
 }
 
 func test(net *bs.Network, dataset [][][]float64) {
-	testData, err := bs.DataCh(dataset, false)
+	testBatch := func(i int) bool {
+		return (i%len(dataset) == len(dataset)-1)
+	}
+	testData, err := bs.Data(dataset, testBatch)
 	if err != nil {
 		panic(err.Error())
 	}
 
 	fmt.Println("Testing...")
-	_, _, err = net.Test(testData, bs.SquaredError(true), bs.CorrectRound, len(dataset))
+	_, _, err = net.Test(testData, bs.SquaredError(true), bs.CorrectRound)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -159,7 +164,7 @@ func main() {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 1, 0, hl); err != nil {
+		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 1, 1, hl); err != nil {
 			panic(err.Error())
 		}
 
@@ -183,5 +188,4 @@ func main() {
 	net = load()
 	train(net, dataset)
 	test(net, dataset)
-
 }

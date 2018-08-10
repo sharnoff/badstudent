@@ -20,9 +20,6 @@ type CostFunction interface {
 	// more details on returning function:
 	// args: index in given range, derivative of the total cost W.R.T. that value
 	//
-	// will only be run after Cost() has been run, which means that it likely won't have to re-calculate some parts
-	// should NOT modify actual values or target values, as they are originals
-	//
 	// actual values and target values will always have the same length,
 	// start and end will always be a valid range
 	Deriv([]float64, []float64, int, int, func(int, float64)) error

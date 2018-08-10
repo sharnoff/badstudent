@@ -2,7 +2,6 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	"fmt"
 )
 
 type status int8
@@ -99,7 +98,7 @@ func (net *Network) checkOutputs() error {
 					n.completed = true
 
 					for _, out := range n.outputs.nodes {
-						if err := check(out, depth + n.Delay()); err != nil {
+						if err := check(out, depth+n.Delay()); err != nil {
 							return err
 						}
 					}
@@ -134,8 +133,8 @@ func (n *Node) evaluate() error {
 	} else if n.IsInput() {
 		if n.host.hasDelay {
 			if n.host.isGettingDeltas() {
-				n.setValues(n.storedValues[len(n.storedValues) - 1])
-				n.storedValues = n.storedValues[:len(n.storedValues) - 1]
+				n.setValues(n.storedValues[len(n.storedValues)-1])
+				n.storedValues = n.storedValues[:len(n.storedValues)-1]
 			} else {
 				n.storedValues = append(n.storedValues, n.values)
 			}
@@ -149,8 +148,8 @@ func (n *Node) evaluate() error {
 		if !n.host.isGettingDeltas() {
 			n.setValues(<-n.delay)
 		} else { // if getting deltas
-			n.setValues(n.storedValues[len(n.storedValues) - 1])
-			n.storedValues = n.storedValues[:len(n.storedValues) - 1]
+			n.setValues(n.storedValues[len(n.storedValues)-1])
+			n.storedValues = n.storedValues[:len(n.storedValues)-1]
 		}
 		n.completed = true
 	}
@@ -293,13 +292,19 @@ func (net *Network) isGettingDeltas() bool {
 
 // Calculates the deltas of all of the Nodes in the Network whose deltas
 // must be calculated
-func (net *Network) getDeltas(cfDeriv func(int, int, func(int, float64)) error) error {
+//
+// targets is assumed to be the proper length
+func (net *Network) getDeltas(targets []float64, cf CostFunction) error {
 	if net.stat < evaluated {
 		return errors.Errorf("Network must be evaluated before getting deltas")
 	} else if net.stat >= deltas {
 		return nil
 	} else if net.hasDelay {
 		return errors.Errorf("Cannot obtain deltas for Network with delay")
+	}
+
+	cfDeriv := func(start, end int, add func(int, float64)) error {
+		return cf.Deriv(net.outputs.getValues(false), targets, start, end, add)
 	}
 
 	for i, in := range net.inputs.nodes {
@@ -317,7 +322,7 @@ func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learni
 	// unsafe setting, but should practically be fine
 	net.stat = evaluated
 
-	for i := range targets {
+	for i := len(targets) - 1; i >= 0; i-- {
 		if err := net.evaluate(); err != nil {
 			return errors.Wrapf(err, "Failed to evaluate network to use targets %d\n", i)
 		}
@@ -394,7 +399,6 @@ func (n *Node) addWeights() error {
 // Updates the weights in the network with any previously saved changes.
 // Only runs if there are changes that have not been applied
 func (net *Network) AddWeights() error {
-	fmt.Println("adding weights")
 	if !net.hasSavedChanges {
 		return nil
 	}

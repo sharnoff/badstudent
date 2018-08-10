@@ -3,6 +3,7 @@ package badstudent
 import (
 	"github.com/pkg/errors"
 	"math"
+	"reflect"
 )
 
 // Adjusts the weights in the network, according to the provided arguments
@@ -17,11 +18,7 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 		return
 	}
 
-	cfDeriv := func(start, end int, add func(int, float64)) error {
-		return cf.Deriv(net.outputs.getValues(false), targets, start, end, add)
-	}
-
-	if err = net.getDeltas(cfDeriv); err != nil {
+	if err = net.getDeltas(targets, cf); err != nil {
 		err = errors.Wrapf(err, "Failed to get deltas of Network\n")
 		return
 	}
@@ -56,303 +53,284 @@ type Result struct {
 	Iteration int
 
 	// Average cost, from CostFunc
-	Avg float64
+	Cost float64
 
-	// The percent correct, as per IsCorrect
-	// Out of 100
-	Percent float64
+	// The fraction correct, as per IsCorrect() from TrainArgs
+	// 0 → 1
+	Correct float64
 
 	// The result is either from a test or a status update
 	IsTest bool
 }
 
-// Simply a way to condense the large list of arguments to *Network.Train()
 type TrainArgs struct {
-	// The source for all of the training data for the Network
+	// Will be called at each successive iteration to fetch the next sample of
+	// training data.
 	//
-	// sends a piece of data for each 'true' it is sent.
-	// both channels will be pre-made with no buffers
+	// Expected returns are: sample of training data; whether or not this sample is
+	// the last in a batch; a message with a reason to stop training, if any.
 	//
-	// the sending of a 'false' indicates that that
-	// there will be no more requests for data
+	// To perform stochastic gradient descent, simply return 'true' each time.
 	//
-	// if there is an error, the channel of Data should be closed
-	// else, it will not be registered
-	//
-	// should set the provided *bool - 'moreData' - to false if there is no more data
-	// otherwise, it may deadlock
-	Data func(chan bool, chan Datum, *bool, *error)
+	// A note about RNNs: For training recurrent neural networks with the same arguments as
+	// feed-forward networks, batch boundaries are used to signify the end of a sequence.
+	// Additionally, the
+	Data func() (Datum, bool, error)
 
-	// The source for all of the testing data for the Network
+	// Can be omitted if ShouldTest is omitted.
+	// Will run every time ShouldTest() returns true
 	//
-	// effectively identical to 'Data'
-	// will only send 'false' if there has been an error
+	// Should return true only while the last sample is being given.
 	//
-	// the channel of data should be closed once there
-	// are no more data to test
-	TestData func(chan bool, chan Datum, *bool, *error)
+	// The results of the testing will be sent through Results
+	TestData func() (Datum, bool, error)
 
-	// The number of testing data the network should test on before that iteration
-	// Will not test if 0
+	// If omitted, TestData() will recieve no use
+	// Will be given the current iteration
 	//
-	// if equal to nil (or not given), will never test (allowing TestData to be nil)
-	//
-	// the results of testing are sent back through Results,
-	// with IsTest = true
-	ShouldTest func(int) int
+	// Testing is performed before training. Ex: if on iteration 'n', a batch is completed,
+	// then the next opportunity to test is on iteration 'n + 1', before the start of the
+	// next batch
+	ShouldTest func(int) bool
 
-	// Whether or not to send back training status
-	// if equal to nil, will never send back data
+	// Can be omitted
 	//
-	// sends before training on that iteration,
-	// will not send at iteration 0 (because there has been no training)
+	// If 'true' is returned, general information about the status of the training
+	// since the last time 'true' was returned will be sent through Results
+	//
+	// Will ignore 'true' on iteration 0
 	SendStatus func(int) bool
 
-	// The number of training samples to be run before applying the changes to weights
-	// also determines the number of training samples requested from
+	// Will be called at each sucessive iteration to determine if training should
+	// continue. Training will stop if 'false' is returned.
 	//
-	// defaults to a batch size of 1 (no changes saved)
-	//
-	// returns: whether or not the next iteration is the start of a batch; whether or not the network should delay changes
-	Batch func(int) (bool, bool)
-
-	// Whether or not the network should keep training (will keep training if true)
-	// arguments: number of iterations over individual data, previous error (cost)*
-	//
-	// *will be given NaN if no recorded previous error (iteration 0)
+	// Will be given the iteration (starting at zero) and the error (cost) of the
+	// previous iteration, as determined by CostFunc.
+	// Iteration values start at 0, and the previous error will be NaN for that 0th
+	// iteration.
 	RunCondition func(int, float64) bool
 
-	// Returns what the learning rate to train the network should be at that iteration
-	// arguments: number of iterations over individual data, previous error (cost)*
+	// Will be called at each successive iteration to determine the learning rate to
+	// be used in adjusting the values of the weights in the Network.
 	//
-	// *will be given NaN on iteration 0 because of no previously recorded error
+	// Will be given the iteration (starting at zero) and the error (cost) of the
+	// previous iteration, as determined by CostFunc.
+	// Iteration values start at 0, and the previous error will be NaN for that 0th
+	// iteration.
 	LearningRate func(int, float64) float64
 
-	// given outputs, targets; should return whether or not the outputs are correct
-	// is not required. Defaults to CorrectRound()
+	// If omitted, Results will always give 'Correct' of 0
+	//
+	// Will be given: network outputs; target outputs. The length of both will be the
+	// same.
 	IsCorrect func([]float64, []float64) bool
 
-	// calculates the cost / error for the network on that datum
-	// used for both training and testing
-	// is not required. Defaults to SquaredError()
+	// If omitted, will default to SquaredError(false)
 	CostFunc CostFunction
 
-	// Where the results of testing and status checking are sent
-	// can be provided as nil
-	//
-	// Train() will return error if Results is nil and
-	// SendStatus or ShouldTest return true
+	// Can be omitted.
+	// Information about the training -- testing results and status updates -- will be sent
+	// through this channel
 	Results chan Result
 
-	// Err should not be nil, and *Err should be nil
-	// this is where (how) any error encoutered while training
-	// will be returned
+	// If there is an error, this is where it will be returned.
+	// Train will not run if this is nil.
 	Err *error
 }
 
-var default_CostFunc = SquaredError(false)
-var default_IsCorrect = CorrectRound
-var default_Batch = func(iteration int) (bool, bool) { return true, false }
-
-// Trains the network, given the provided arguments.
-// For information on how changes in arguments affect how the Network trains, see TrainArgs
+// Trains the network
 func (net *Network) Train(args TrainArgs) {
-
-	canSend := true
-	if args.Results != nil {
-		defer close(args.Results)
-	}
-
-	// error checking
+	// handle error cases and set defaults
 	{
+		if args.Results == nil {
+			args.Results = make(chan Result)
+
+			go func() {
+				for _ = range args.Results {
+				}
+			}()
+		}
+
+		defer close(args.Results)
+
 		if args.Err == nil {
 			return
 		} else if *args.Err != nil {
 			return
-		} else if args.Data == nil {
-			*args.Err = errors.Errorf("Can't *Network.Train(), no provided data (args.Train == nil)")
-			return
-		} else if args.RunCondition == nil {
-			*args.Err = errors.Errorf("Can't *Network.Train(), no provided run condition (args.RunCondition == nil)")
-			return
-		} else if args.LearningRate == nil {
-			*args.Err = errors.Errorf("Can't *Network.Train(), no provided learning rate (args.LearningRate == nil)")
 		}
-	}
 
-	// setting defaults
-	{
-		if args.CostFunc == nil {
-			args.CostFunc = default_CostFunc
+		if args.Data == nil {
+			*args.Err = errors.Errorf("args.Data cannot be nil; there must be training data supplied to the network")
+			return
+		}
+
+		if args.TestData == nil {
+			if args.ShouldTest != nil {
+				*args.Err = errors.Errorf("If args.TestData is nil, so must args.ShouldTest")
+				return
+			} else {
+				args.ShouldTest = func(iteration int) bool {
+					return false
+				}
+			}
+		}
+
+		if args.SendStatus == nil {
+			args.SendStatus = func(iteration int) bool {
+				return false
+			}
+		}
+
+		if args.RunCondition == nil {
+			*args.Err = errors.Errorf("args.RunCondition cannot be nil")
+			return
+		}
+
+		if args.LearningRate == nil {
+			*args.Err = errors.Errorf("args.LearningRate cannot be nil; there must be a learning rate in order to train")
+			return
 		}
 
 		if args.IsCorrect == nil {
-			args.IsCorrect = default_IsCorrect
-		}
-
-		if args.Batch == nil {
-			args.Batch = default_Batch
-		}
-
-		if args.ShouldTest == nil {
-			args.ShouldTest = func(iteration int) int {
-				return 0
+			args.IsCorrect = func(a, b []float64) bool {
+				return false
 			}
+		}
+
+		if args.CostFunc == nil {
+			args.CostFunc = SquaredError(false)
 		}
 	}
 
 	var iteration int
-	var runningAvgCost, runningPercent float64
-	var statusSize int // the amount of data that the status update reports on
 	var lastCost float64 = math.NaN()
 
-	var fetchData chan bool = make(chan bool)
-	var dataSrc chan Datum = make(chan Datum)
-	var moreData bool = true
-	var dataErr error
+	var statusCost, statusCorrect float64
+	var statusSize int
 
-	go args.Data(fetchData, dataSrc, &moreData, &dataErr)
+	// used only for training recurrent neural networks
+	var targets [][]float64
+	var learningRates []float64
 
-	// whether or not Data() has returned - dataSrc is closed or
-	// fetchData has already sent 'false'
-	var finishedSafely bool
-	defer func() {
-		if !finishedSafely {
-			fetchData <- false
-			close(fetchData)
-		}
-	}()
+	var betweenBatches bool = true
 
-	// declared here for the sake of efficiency.
-	// does not persist from one iteration to the next
-	var saveChanges bool
-	var newBatch bool
-
-	var changesDelayed bool
-
-	var recurrentTargets [][]float64
-	var recurrentLearningRates []float64
-
-	for args.RunCondition(iteration, lastCost) {
-
+	// for run condition (actually slightly farther down)
+	for {
 		if args.SendStatus(iteration) && iteration != 0 {
-			if !canSend {
-				*args.Err = errors.Errorf("Can't *Network.Train(), tried to send status when can't send results (args.Results == nil) (iteration = %d)", iteration)
-				return
+			statusCost /= float64(statusSize)
+			statusCorrect /= float64(statusSize)
+
+			args.Results <- Result{
+				Iteration: iteration,
+				Cost:      statusCost,
+				Correct:   statusCorrect,
+				IsTest:    false,
 			}
 
-			runningPercent /= float64(statusSize)
-			runningAvgCost /= float64(statusSize)
-
-			args.Results <- Result{iteration, runningAvgCost, runningPercent, false}
-
-			runningPercent, runningAvgCost = 0.0, 0.0
+			statusCost, statusCorrect = 0, 0
 			statusSize = 0
 		}
 
-		if amount := args.ShouldTest(iteration); amount != 0 {
-			if !canSend {
-				*args.Err = errors.Errorf("Can't *Network.Train(), tried to test when can't send results (args.Results == nil) (iteration = %d)", iteration)
+		if args.ShouldTest(iteration) {
+			if net.hasDelay && !betweenBatches {
+				*args.Err = errors.Errorf("Testing for recurrent networks must be done between batches")
 				return
 			}
 
-			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect, amount)
+			cost, correct, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect)
 			if err != nil {
-				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), testing before iteration %d failed\n", iteration)
+				*args.Err = errors.Wrapf(err, "Testing failed on iteration %d\n", iteration)
 				return
 			}
 
-			args.Results <- Result{iteration, avg, percent, true}
+			args.Results <- Result{
+				Iteration: iteration,
+				Cost:      cost,
+				Correct:   correct,
+				IsTest:    true,
+			}
 		}
 
-		if newBatch, saveChanges = args.Batch(iteration); newBatch && iteration != 0 {
-			if changesDelayed {
+		if !args.RunCondition(iteration, lastCost) {
+			break
+		}
+
+		betweenBatches = false
+
+		d, batch, err := args.Data()
+		if err != nil {
+			*args.Err = errors.Wrapf(err, "Failed to get training data on iteration %d\n", d)
+			return
+		} else if !d.fits(net) {
+			*args.Err = errors.Errorf("Training data recieved for iteration %d does not fit Network", iteration)
+			return
+		}
+
+		outs, err := net.GetOutputs(d.Inputs)
+		if err != nil {
+			*args.Err = errors.Wrapf(err, "Failed to get network outputs on iteration %d\n", iteration)
+			return
+		}
+
+		cost, err := args.CostFunc.Cost(outs, d.Outputs)
+		if err != nil {
+			*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
+		}
+
+		correct := args.IsCorrect(outs, d.Outputs)
+
+		α := args.LearningRate(iteration, lastCost)
+		if !net.hasDelay { // if the network is 'normal'
+			if err := net.getDeltas(d.Outputs, args.CostFunc); err != nil {
+				*args.Err = errors.Wrapf(err, "Failed to get network deltas on iteration %d\n", iteration)
+				return
+			}
+
+			saveChanges := net.hasSavedChanges || !batch
+			if err := net.adjust(α, saveChanges); err != nil {
+				*args.Err = errors.Wrapf(err, "Failed to adjust network on iteration %d\n", iteration)
+			}
+
+			if batch {
 				if err := net.AddWeights(); err != nil {
-					*args.Err = errors.Wrapf(err, "Can't *Network.Train(), adding weights from start of new batch on iteration %d failed\n", iteration)
+					*args.Err = errors.Wrapf(err, "Failed to add weights after iteration %d\n", iteration)
 					return
 				}
 
-				changesDelayed = false
+				betweenBatches = true
 			}
+		} else {
+			targets = append(targets, d.Outputs)
+			learningRates = append(learningRates, α)
 
-			if net.hasDelay {
-				if err := net.adjustRecurrent(recurrentTargets, args.CostFunc, recurrentLearningRates); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed to adjust recurrent network at the start of a new batch\n")
-				}
-			}
-		}
-
-		if saveChanges {
-			changesDelayed = true
-		}
-
-		// get data and correct network weights
-		var cost float64
-		var outs []float64
-		var correct bool
-		{
-			if !moreData {
-				finishedSafely = true
-				break
-			}
-
-			fetchData <- true
-
-			d, ok := <-dataSrc
-			if dataErr != nil {
-				*args.Err = errors.Wrapf(dataErr, "Can't *Network.Train(), fetching data on iteration %d failed\n", iteration)
-				finishedSafely = true
-				return
-			} else if !ok {
-				*args.Err = errors.Errorf("Can't *Network.Train(), data source channel closed without error on iteration %d\n", iteration)
-				finishedSafely = true
-				return
-			}
-
-			if !d.fits(net) {
-				*args.Err = errors.Errorf("Can't *Network.Train(), provided Datum on iteration %d does not fit network", iteration)
-			}
-
-			var err error
-			if !net.hasDelay {
-				cost, outs, err = net.Correct(d.Inputs, d.Outputs, args.LearningRate(iteration, lastCost), args.CostFunc, saveChanges)
-				if err != nil {
-					*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), correction failed on iteration %d\n", iteration)
-					return
-				}
-			} else {
-				if outs, err = net.GetOutputs(d.Inputs); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed too get outputs on iteration %d\n", iteration)
+			if batch {
+				if err := net.adjustRecurrent(targets, args.CostFunc, learningRates); err != nil {
+					*args.Err = errors.Wrapf(err, "Failed to apply recurrent adjustment methods to network on iteration %d\n", iteration)
 					return
 				}
 
-				if cost, err = args.CostFunc.Cost(outs, d.Outputs); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
-				}
+				targets = nil
+				learningRates = nil
 
-
+				betweenBatches = true
 			}
-
-			correct = args.IsCorrect(outs, d.Outputs)
 		}
 
-		{
-			if correct {
-				runningPercent += 100
-			}
-			runningAvgCost += cost
+		statusCost += cost
+		if correct {
+			statusCorrect += 1.0
 		}
-
-		iteration++
 		statusSize++
+
 		lastCost = cost
+		iteration++
 	}
 
 	// finish up before returning
 	{
-		if changesDelayed {
+		if net.hasSavedChanges {
 			if err := net.AddWeights(); err != nil {
-				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), adding weights after finishing training (iteration %d) failed\n", iteration)
+				*args.Err = errors.Wrapf(err, "Failed to add weights to network post-training\n")
 				return
 			}
 		}
@@ -360,145 +338,114 @@ func (net *Network) Train(args TrainArgs) {
 		if net.hasDelay {
 			net.clearDelays()
 		}
-
-		if args.SendStatus(iteration) && iteration != 0 {
-			if !canSend {
-				*args.Err = errors.Errorf("Can't *Network.Train(), tried to send status after training when can't send results (args.Results == nil) (iteration = %d)", iteration)
-				return
-			}
-
-			runningPercent /= float64(statusSize)
-			runningAvgCost /= float64(statusSize)
-
-			args.Results <- Result{iteration, runningAvgCost, runningPercent, false}
-		}
-
-		if amount := args.ShouldTest(iteration); amount != 0 {
-			if !canSend {
-				*args.Err = errors.Errorf("Can't *Network.Train(), tried to test after training when can't send results (args.Results == nil) (iteration = %d)", iteration)
-				return
-			}
-
-			avg, percent, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect, amount)
-			if err != nil {
-				*args.Err = errors.Wrapf(err, "Couldn't *Network.Train(), testing after training (iteration %d) failed\n", iteration)
-				return
-			}
-
-			args.Results <- Result{iteration, avg, percent, true}
-		}
 	}
 
 	return
 }
 
-// Tests the network on the provided data, using 'cf' and 'isCorrect' to return average cost, percent correct
+// args.TestData, args.CostFunc, args.IsCorrect
 //
-// 'amount' is the quantity of test data that should be requested
-//
-// the responsibility is on Test() to send 'false' to data, not data to close its channel
-// for more information on 'data', see TrainArgs.TestData
-//
-// returns average cost and percent correct (out of 100)
-func (net *Network) Test(data func(chan bool, chan Datum, *bool, *error), cf CostFunction, isCorrect func([]float64, []float64) bool, amount int) (float64, float64, error) {
+// Information about arguments to Test can be found in TrainArgs
+// Will return: average cost; average fraction correct; any errors
+func (net *Network) Test(data func() (Datum, bool, error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
+	var avgCost, avgCorrect float64
+	var testSize int
 
-	var fetchData chan bool = make(chan bool)
-	var dataSrc chan Datum = make(chan Datum)
-	var dataErr error
-	var moreData bool = true
-
-	go data(fetchData, dataSrc, &moreData, &dataErr)
-
-	var finishedSafely bool
-	defer func() {
-		if !finishedSafely {
-			fetchData <- false
-			close(fetchData)
-		}
-	}()
-
-	var avgCost, percent float64
-
-	i := 0 // used for reporting errors
 	for {
-		if !moreData {
-			finishedSafely = true
-			break
-		}
-
-		fetchData <- true
-
-		d, ok := <-dataSrc
-		if dataErr != nil {
-			finishedSafely = true
-			return 0, 0, errors.Wrapf(dataErr, "Can't *Network.Test(), fetching data for test iteration %d failed\n", i)
-		} else if !ok {
-			finishedSafely = true
-			return 0, 0, errors.Errorf("Can't *Network.Test(), data source channel closed without error on test iteration %d\n", i)
+		d, last, err := data()
+		if err != nil {
+			return 0, 0, errors.Wrapf(err, "Failed to get sample #%d\n", testSize)
 		}
 
 		if !d.fits(net) {
-			return 0, 0, errors.Errorf("Can't *Network.Test(), provided Datum on test iteration %d does not fit network", i)
+			return 0, 0, errors.Errorf("Test sample #%d does not fit network dimensions\n", testSize)
 		}
 
 		outs, err := net.GetOutputs(d.Inputs)
 		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), could not get outputs of network on test iteraiton %d\n", i)
+			return 0, 0, errors.Wrapf(err, "Failed to get outputs of network with sample #%d\n", testSize)
 		}
 
-		c, err := cf.Cost(outs, d.Outputs)
+		cost, err := costFunc.Cost(outs, d.Outputs)
 		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Couldn't *Network.Test(), could not calculate cost of outputs on test iteration %d\n", i)
+			return 0, 0, errors.Wrapf(err, "Failed to get cost of outputs with sample #%d\n", testSize)
 		}
-		avgCost += c
+		avgCost += cost
 
 		if isCorrect(outs, d.Outputs) {
-			percent += 100.0
+			avgCorrect += 1
 		}
 
-		i++
+		testSize++
+		if last {
+			avgCost /= float64(testSize)
+			avgCorrect /= float64(testSize)
+
+			return avgCost, avgCorrect, nil
+		}
 	}
-
-	avgCost /= float64(i)
-	percent /= float64(i)
-
-	return avgCost, percent, nil
 }
 
-// Returns a function that satisfies TrainArgs.Data or TrainArgs.TestData, given a list of data
+// possible types for dataset are: [][][]float64; []Datum; chan [][]float64; chan Datum
 //
-// data[n] should have length 2
-// data[n][0] is inputs, data[n][1] is outputs
-//
-// 'loop' should be true for training samples, false for testing
-func DataCh(data [][][]float64, loop bool) (func(chan bool, chan Datum, *bool, *error), error) {
+// if isTest is true, then endBatch will be ignored -- can be nil
+func Data(dataset interface{}, endBatch func(int) bool) (func() (Datum, bool, error), error) {
+	v := reflect.ValueOf(dataset)
+	if v.Kind() != reflect.Chan && v.Kind() != reflect.Slice {
+		return nil, errors.Errorf("%T is not a compatible type", dataset)
+	}
 
-	// check that all of the data are okay (but does not check if they fit the network)
-	for i := range data {
-		if len(data[i]) != 2 {
-			return nil, errors.Errorf("Can't get DataCh, len(data[%d]) != 2 (%d)", i, len(data[i]))
+	toDatum := func(d [][]float64) Datum {
+		return Datum{d[0], d[1]}
+	}
+
+	var get func() Datum
+
+	if v.Kind() == reflect.Chan {
+		if d, ok := dataset.(chan [][]float64); ok {
+			get = func() Datum {
+				return toDatum(<-d)
+			}
+		} else if d, ok := dataset.(chan Datum); ok {
+			get = func() Datum {
+				return <-d
+			}
+		} else {
+			return nil, errors.Errorf("%T is not a compatible type", dataset)
+		}
+	} else { // must be a Slice
+		if v.Len() == 0 {
+			return nil, errors.Errorf("Must be supplied data; len(dataset) == 0")
+		}
+
+		var index = 0
+		if d, ok := dataset.([][][]float64); ok {
+			get = func() Datum {
+				i := index
+				index++
+				if index >= len(d) {
+					index = 0
+				}
+				return toDatum(d[i])
+			}
+		} else if d, ok := dataset.([]Datum); ok {
+			get = func() Datum {
+				i := index
+				index++
+				if index >= len(d) {
+					index = 0
+				}
+				return d[i]
+			}
+		} else {
+			return nil, errors.Errorf("%T is not a compatible type", dataset)
 		}
 	}
 
-	return func(request chan bool, dataSrc chan Datum, moreData *bool, err *error) {
-		defer close(dataSrc)
+	var iteration int
 
-		for {
-			for i := range data {
-				req := <-request
-				if !req {
-					return
-				}
-
-				dataSrc <- Datum{data[i][0], data[i][1]}
-			}
-
-			if !loop {
-				*moreData = false
-				break
-			}
-		}
-
-		return
+	return func() (Datum, bool, error) {
+		iteration++
+		return get(), endBatch(iteration - 1), nil
 	}, nil
 }
