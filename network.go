@@ -56,7 +56,7 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 		return nil, errors.Wrapf(err, "Setting inputs failed\n")
 	}
 
-	if err := net.evaluate(); err != nil {
+	if err := net.evaluate(false); err != nil {
 		return nil, errors.Wrapf(err, "Failed to evaluate all Nodes in Network\n")
 	}
 

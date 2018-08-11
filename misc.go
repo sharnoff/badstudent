@@ -95,3 +95,10 @@ func Every(frequency int) func(int) bool {
 		return iteration%frequency == 0
 	}
 }
+
+// returns (iteration % frequency == frequency - 1)
+func BatchEvery(frequency int) func(int) bool {
+	return func(iteration int) bool {
+		return iteration % frequency == frequency - 1
+	}
+}

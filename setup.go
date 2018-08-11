@@ -24,15 +24,15 @@ func (net *Network) init() {
 func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*Node) (*Node, error) {
 	n, err := net.Placeholder(name, size)
 	if err != nil {
-		// remove the effects of making the placeholder
-		net.nodesByName[name] = nil
-		net.nodesByID = net.nodesByID[:n.id]
 		return n, err
 	}
 
 	if err := n.Replace(typ, delay, inputs...); err != nil {
 		net.nodesByName[name] = nil
-		net.nodesByID = net.nodesByID[:n.id]
+
+		copy(net.nodesByID[n.id:], net.nodesByID[n.id + 1:])
+		net.nodesByID = net.nodesByID[:len(net.nodesByID)-1]
+
 		return n, err
 	}
 

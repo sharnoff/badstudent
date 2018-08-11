@@ -169,8 +169,9 @@ func (n *Node) evaluate() error {
 		return errors.Wrapf(err, "Operator evaluation failed\n")
 	}
 
-	if n.Delay() != 0 {
+	if n.Delay() != 0 && !n.host.isGettingDeltas() {
 		n.delay <- values
+		n.storedValues = append(n.storedValues, values)
 	}
 
 	n.completed = true
@@ -178,10 +179,12 @@ func (n *Node) evaluate() error {
 }
 
 // Changes the values of the Nodes so that they accurately reflect the inputs
-func (net *Network) evaluate() error {
+//
+// 'recurrent' forces ignoring avoiding repetition if net.stat >= evaluated, if true
+func (net *Network) evaluate(recurrent bool) error {
 	if net.stat < finalized {
 		return errors.Errorf("Network is not complete")
-	} else if net.stat >= evaluated {
+	} else if !recurrent && net.stat >= evaluated {
 		return nil
 	}
 
@@ -287,7 +290,7 @@ func (n *Node) inputDeltas(input *Node, add func(int, float64), cfDeriv func(int
 
 // only accurate while there is some calculation happening
 func (net *Network) isGettingDeltas() bool {
-	return net.stat == evaluated
+	return net.stat >= evaluated
 }
 
 // Calculates the deltas of all of the Nodes in the Network whose deltas
@@ -323,7 +326,7 @@ func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learni
 	net.stat = evaluated
 
 	for i := len(targets) - 1; i >= 0; i-- {
-		if err := net.evaluate(); err != nil {
+		if err := net.evaluate(true); err != nil {
 			return errors.Wrapf(err, "Failed to evaluate network to use targets %d\n", i)
 		}
 
