@@ -144,7 +144,7 @@ func (n *Node) evaluate() error {
 		return nil
 	}
 
-	if n.Delay() != 0 {
+	if n.HasDelay() {
 		if !n.host.isGettingDeltas() {
 			n.setValues(<-n.delay)
 		} else { // if getting deltas
@@ -161,7 +161,7 @@ func (n *Node) evaluate() error {
 	}
 
 	values := n.values
-	if n.Delay() != 0 {
+	if n.HasDelay() {
 		values = make([]float64, len(n.values))
 	}
 
@@ -169,7 +169,7 @@ func (n *Node) evaluate() error {
 		return errors.Wrapf(err, "Operator evaluation failed\n")
 	}
 
-	if n.Delay() != 0 && !n.host.isGettingDeltas() {
+	if n.HasDelay() && !n.host.isGettingDeltas() {
 		n.delay <- values
 		n.storedValues = append(n.storedValues, values)
 	}
@@ -203,6 +203,7 @@ func (net *Network) evaluate(recurrent bool) error {
 //
 // A full diagram of the operational logic of evaluate() and getDeltas() will be available soon
 func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error, deltasMatter bool) error {
+
 	deltasMatter = deltasMatter || n.typ.CanBeAdjusted(n)
 
 	if n.completed && (n.deltasActuallyCalculated || !deltasMatter) {
@@ -220,7 +221,7 @@ func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error, delta
 		return nil
 	}
 
-	if n.Delay() != 0 {
+	if n.HasDelay() {
 		n.deltas = <-n.delayDeltas
 		n.deltasActuallyCalculated = true
 		n.completed = true
@@ -244,7 +245,7 @@ func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error, delta
 		}
 	}
 
-	if n.Delay() != 0 {
+	if n.HasDelay() {
 		n.delayDeltas <- deltas
 	} else {
 		n.deltas = deltas

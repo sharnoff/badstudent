@@ -29,6 +29,10 @@ func (n *Node) Delay() int {
 	return cap(n.delay)
 }
 
+func (n *Node) HasDelay() bool {
+	return n.Delay() != 0
+}
+
 // Returns whether or not the Node is a placeholder Node
 // Returns false if it never was, returns false if it has been replaced
 func (n *Node) IsPlaceholder() bool {
