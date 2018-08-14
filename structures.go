@@ -80,8 +80,8 @@ type Node struct {
 	// of the particular training example
 	deltas []float64 // δ
 
-	// separate from 'status.' true iff inputDeltas() have been run on outputs to node
-	deltasActuallyCalculated bool
+	//
+	deltasMatter bool
 
 	// The set of Nodes that the given Node takes input from
 	inputs *nodeGroup

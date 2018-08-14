@@ -46,7 +46,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 	res := make(chan bs.Result)
 
 	args := bs.TrainArgs{
-		Data: trainData,
+		Data:         trainData,
 		TestData:     testData,
 		ShouldTest:   bs.Every(testFrequency),
 		SendStatus:   bs.Every(statusFrequency),
@@ -60,7 +60,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 
 	fmt.Println("Starting training...")
 	go net.Train(args)
-	fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
+	// fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
 
 	// statusCost, statusPercent, testCost, testPercent
 	results := make([]float64, 4)
@@ -69,7 +69,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 	for r := range res {
 
 		if r.Iteration > previousIteration && previousIteration >= 0 {
-			fmt.Printf("%d, %s\n", previousIteration, format(results...))
+			// fmt.Printf("%d, %s\n", previousIteration, format(results...))
 
 			results = make([]float64, len(results))
 		}
@@ -89,7 +89,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 		panic(err.Error())
 	}
 
-	fmt.Printf("%d, %s\n", previousIteration, format(results...))
+	// fmt.Printf("%d, %s\n", previousIteration, format(results...))
 	fmt.Println("Done training!")
 }
 
@@ -123,6 +123,7 @@ func load() (net *bs.Network) {
 		"input":                 operators.Neurons(optimizers.GradientDescent()),
 		"hidden layer neurons":  operators.Neurons(optimizers.GradientDescent()),
 		"loop":                  operators.Neurons(optimizers.GradientDescent()),
+		"loop logistic":         operators.Logistic(),
 		"hidden layer logistic": operators.Logistic(),
 		"output neurons":        operators.Neurons(optimizers.GradientDescent()),
 		"output logistic":       operators.Logistic(),
@@ -144,12 +145,12 @@ func main() {
 		{{1, -1}, {1}},
 		{{1, 1}, {0}},
 	}
-	
+
 	net := new(bs.Network)
 	fmt.Println("Setting up network...")
 	{
 		var err error
-		var l, hl, loop *bs.Node
+		var l, loop, loopAF *bs.Node
 
 		if l, err = net.Add("input", operators.Neurons(optimizers.GradientDescent()), 2, 0); err != nil {
 			panic(err.Error())
@@ -159,19 +160,23 @@ func main() {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 2, 0, l, loop); err != nil {
+		if loopAF, err = net.Add("loop logistic", operators.Logistic(), 1, 0, loop); err != nil {
 			panic(err.Error())
 		}
 
-		if hl, err = net.Add("hidden layer logistic", operators.Logistic(), 2, 0, hl); err != nil {
+		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 2, 0, l, loopAF); err != nil {
 			panic(err.Error())
 		}
 
-		if err = loop.Replace(operators.Neurons(optimizers.GradientDescent()), 1, hl); err != nil {
+		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 2, 0, l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, 0, hl, l); err != nil {
+		if err = loop.Replace(operators.Neurons(optimizers.GradientDescent()), 1, l); err != nil {
+			panic(err.Error())
+		}
+
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, 0, l); err != nil {
 			panic(err.Error())
 		}
 
@@ -191,6 +196,7 @@ func main() {
 	net = load()
 	train(net, dataset)
 	test(net, dataset)
+	save(net)
 
 	// net := load()
 	// train(net, dataset)
