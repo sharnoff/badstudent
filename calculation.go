@@ -21,7 +21,9 @@ func (net *Network) resetCompletion() {
 	}
 }
 
-func (net *Network) clearDelays() {
+// clears delay-related functions for all nodes in the network
+// Essentially flushes a recurrent-type network
+func (net *Network) ClearDelays() {
 	for _, n := range net.nodesByID {
 		for i := 0; i < cap(n.delay); i++ {
 			<-n.delay
@@ -30,6 +32,8 @@ func (net *Network) clearDelays() {
 			<-n.delayDeltas
 			n.delayDeltas <- make([]float64, len(n.values))
 		}
+
+		n.storedValues = nil
 	}
 }
 
@@ -403,7 +407,7 @@ func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learni
 		return errors.Wrapf(err, "Failed to add weights after adjusting\n")
 	}
 
-	net.clearDelays()
+	net.ClearDelays()
 	return nil
 }
 

@@ -336,7 +336,7 @@ func (net *Network) Train(args TrainArgs) {
 		}
 
 		if net.hasDelay {
-			net.clearDelays()
+			net.ClearDelays()
 		}
 	}
 
@@ -350,6 +350,8 @@ func (net *Network) Train(args TrainArgs) {
 func (net *Network) Test(data func() (Datum, bool, error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
 	var avgCost, avgCorrect float64
 	var testSize int
+
+	defer net.ClearDelays()
 
 	for {
 		d, last, err := data()
