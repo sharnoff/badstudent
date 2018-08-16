@@ -358,7 +358,7 @@ func (net *Network) getDeltas(targets []float64, cf CostFunction) error {
 	return nil
 }
 
-func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learningRates []float64) error {
+func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learningRates []float64, saveChanges bool) error {
 	// unsafe setting, but should practically be fine
 	net.stat = evaluated
 
@@ -403,8 +403,10 @@ func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learni
 		}
 	}
 
-	if err := net.AddWeights(); err != nil {
-		return errors.Wrapf(err, "Failed to add weights after adjusting\n")
+	if !saveChanges {
+		if err := net.AddWeights(); err != nil {
+			return errors.Wrapf(err, "Failed to add weights after adjusting\n")
+		}
 	}
 
 	net.ClearDelays()

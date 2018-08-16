@@ -47,6 +47,28 @@ func (d Datum) fits(net *Network) bool {
 	return len(d.Inputs) == net.InputSize() && len(d.Outputs) == net.OutputSize()
 }
 
+// The primary method of supplying data to the network -- for training OR testing
+type DataSupplier interface {
+	// Whether or not the data being supplied is for a recurrent-network
+	//
+	// Will only be called once, before any data is requested
+	IsSequential() bool
+
+	// Returns the next bit of data
+	Get() (Datum, error)
+
+	// Only for recurrent networks: true iff there is no more data in the most recent set
+	SetEnded() bool
+
+	// Whether or not the most recent batch has ended
+	// For an effective batch size of 1, this should always return true.
+	BatchEnded() bool
+
+	// only called if this is supplying test data
+	// Whether or not the necessary amount of testing has been done
+	DoneTesting() bool
+}
+
 // A wrapper for sending back the progress of the training or testing
 type Result struct {
 	// The iteration the result is being sent before
@@ -64,28 +86,14 @@ type Result struct {
 }
 
 type TrainArgs struct {
-	// Will be called at each successive iteration to fetch the next sample of
-	// training data.
-	//
-	// Expected returns are: sample of training data; whether or not this sample is
-	// the last in a batch; a message with a reason to stop training, if any.
-	//
-	// To perform stochastic gradient descent, simply return 'true' each time.
-	//
-	// A note about RNNs: For training recurrent neural networks with the same arguments as
-	// feed-forward networks, batch boundaries are used to signify the end of a sequence.
-	// Additionally, the
-	Data func() (Datum, bool, error)
+	// The source of data used for training the network
+	TrainData DataSupplier
 
-	// Can be omitted if ShouldTest is omitted.
-	// Will run every time ShouldTest() returns true
-	//
-	// Should return true only while the last sample is being given.
-	//
-	// The results of the testing will be sent through Results
-	TestData func() (Datum, bool, error)
+	// The source of data used for ongoing dev/validation of the network while training
+	// Can be nil if and only if ShouldTest is nil
+	TestData DataSupplier
 
-	// If omitted, TestData() will recieve no use
+	// If omitted, TestData will recieve no use; TestData can be nil if this is nil
 	// Will be given the current iteration
 	//
 	// Testing is performed before training. Ex: if on iteration 'n', a batch is completed,
@@ -93,7 +101,7 @@ type TrainArgs struct {
 	// next batch
 	ShouldTest func(int) bool
 
-	// Can be omitted
+	// Can be omitted to represent an unconditional false
 	//
 	// If 'true' is returned, general information about the status of the training
 	// since the last time 'true' was returned will be sent through Results
@@ -159,7 +167,7 @@ func (net *Network) Train(args TrainArgs) {
 			return
 		}
 
-		if args.Data == nil {
+		if args.TrainData == nil {
 			*args.Err = errors.Errorf("args.Data cannot be nil; there must be training data supplied to the network")
 			return
 		}
@@ -212,7 +220,7 @@ func (net *Network) Train(args TrainArgs) {
 	var targets [][]float64
 	var learningRates []float64
 
-	var betweenBatches bool = true
+	var betweenSets bool = true
 
 	// for run condition (actually slightly farther down)
 	for {
@@ -232,8 +240,8 @@ func (net *Network) Train(args TrainArgs) {
 		}
 
 		if args.ShouldTest(iteration) {
-			if net.hasDelay && !betweenBatches {
-				*args.Err = errors.Errorf("Testing for recurrent networks must be done between batches")
+			if net.hasDelay && !betweenSets {
+				*args.Err = errors.Errorf("Testing for recurrent networks must be done between sets")
 				return
 			}
 
@@ -255,9 +263,9 @@ func (net *Network) Train(args TrainArgs) {
 			break
 		}
 
-		betweenBatches = false
+		betweenSets = false
 
-		d, batch, err := args.Data()
+		d, err := args.TrainData.Get()
 		if err != nil {
 			*args.Err = errors.Wrapf(err, "Failed to get training data on iteration %d\n", d)
 			return
@@ -278,6 +286,7 @@ func (net *Network) Train(args TrainArgs) {
 		}
 
 		correct := args.IsCorrect(outs, d.Outputs)
+		batch := args.TrainData.BatchEnded()
 
 		α := args.LearningRate(iteration, lastCost)
 		if !net.hasDelay { // if the network is 'normal'
@@ -296,23 +305,23 @@ func (net *Network) Train(args TrainArgs) {
 					*args.Err = errors.Wrapf(err, "Failed to add weights after iteration %d\n", iteration)
 					return
 				}
-
-				betweenBatches = true
 			}
-		} else {
+		} else { // if the network has delay
 			targets = append(targets, d.Outputs)
 			learningRates = append(learningRates, α)
 
-			if batch {
-				if err := net.adjustRecurrent(targets, args.CostFunc, learningRates); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed to apply recurrent adjustment methods to network on iteration %d\n", iteration)
+			if args.TrainData.SetEnded() {
+				if err := net.adjustRecurrent(targets, args.CostFunc, learningRates, !batch); err != nil {
+					*args.Err = errors.Wrapf(err, "Failed to adjust recurrent model after end of set\n")
 					return
 				}
 
 				targets = nil
 				learningRates = nil
-
-				betweenBatches = true
+				betweenSets = true
+			} else if batch { // but not set ended
+				*args.Err = errors.Errorf("Batching for recurrent models must align with sets")
+				return
 			}
 		}
 
@@ -347,14 +356,18 @@ func (net *Network) Train(args TrainArgs) {
 //
 // Information about arguments to Test can be found in TrainArgs
 // Will return: average cost; average fraction correct; any errors
-func (net *Network) Test(data func() (Datum, bool, error), costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
+func (net *Network) Test(data DataSupplier, costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
+	if net.hasDelay && !data.IsSequential() {
+		return 0, 0, errors.Errorf("Network has delay but data is not sequential")
+	}
+
 	var avgCost, avgCorrect float64
 	var testSize int
 
 	defer net.ClearDelays()
 
 	for {
-		d, last, err := data()
+		d, err := data.Get()
 		if err != nil {
 			return 0, 0, errors.Wrapf(err, "Failed to get sample #%d\n", testSize)
 		}
@@ -378,76 +391,107 @@ func (net *Network) Test(data func() (Datum, bool, error), costFunc CostFunction
 			avgCorrect += 1
 		}
 
-		testSize++
-		if last {
-			avgCost /= float64(testSize)
-			avgCorrect /= float64(testSize)
+		if data.SetEnded() {
+			net.ClearDelays()
+		}
 
-			return avgCost, avgCorrect, nil
+		testSize++
+
+		if data.DoneTesting() {
+			break
 		}
 	}
+
+	if testSize != 0 {
+		avgCost /= float64(testSize)
+		avgCorrect /= float64(testSize)
+	}
+
+	return avgCost, avgCorrect, nil
 }
 
-// possible types for dataset are: [][][]float64; []Datum; chan [][]float64; chan Datum
+type internalSupplier struct {
+	get         func() (Datum, error)
+	setEnded    func() bool
+	batchEnded  func() bool
+	doneTesting func() bool
+}
+
+func (s internalSupplier) IsSequential() bool {
+	return s.setEnded != nil
+}
+
+func (s internalSupplier) Get() (Datum, error) {
+	return s.get()
+}
+
+func (s internalSupplier) SetEnded() bool {
+	return s.setEnded()
+}
+
+func (s internalSupplier) BatchEnded() bool {
+	return s.batchEnded()
+}
+
+func (s internalSupplier) DoneTesting() bool {
+	return s.doneTesting()
+}
+
+// dataset should either be a slice of [][]float64 (where [0] is inputs,
+// [1] is outputs), or a slice of Datum
 //
-// if isTest is true, then endBatch will be ignored -- can be nil
-func Data(dataset interface{}, endBatch func(int) bool) (func() (Datum, bool, error), error) {
-	v := reflect.ValueOf(dataset)
-	if v.Kind() != reflect.Chan && v.Kind() != reflect.Slice {
-		return nil, errors.Errorf("%T is not a compatible type", dataset)
+// for setEnded and batchEnded:
+// both are given an index in the provided data
+// both are called after the data at the specified index has been used
+//
+// setEnded can be set to nil if the data is not sequential
+func Data(dataset interface{}, setEnded, batchEnded func(int) bool) (DataSupplier, error) {
+	var l int
+	if reflect.ValueOf(dataset).Kind() != reflect.Slice {
+		return nil, errors.Errorf("dataset must be a compatible type (%T is not)", dataset)
+	} else if l = reflect.ValueOf(dataset).Len(); l == 0 {
+		return nil, errors.Errorf("dataset must have len > 0")
 	}
 
-	toDatum := func(d [][]float64) Datum {
-		return Datum{d[0], d[1]}
+	var get func(int) Datum
+
+	if d, ok := dataset.([]Datum); ok {
+		get = func(index int) Datum {
+			return d[index]
+		}
+	} else if d, ok := dataset.([][][]float64); ok {
+		get = func(index int) Datum {
+			return Datum{d[index][0], d[index][1]}
+		}
+	} else {
+		return nil, errors.Errorf("dataset is not of a compatible type (%T)", dataset)
 	}
 
-	var get func() Datum
+	var is internalSupplier
 
-	if v.Kind() == reflect.Chan {
-		if d, ok := dataset.(chan [][]float64); ok {
-			get = func() Datum {
-				return toDatum(<-d)
-			}
-		} else if d, ok := dataset.(chan Datum); ok {
-			get = func() Datum {
-				return <-d
-			}
-		} else {
-			return nil, errors.Errorf("%T is not a compatible type", dataset)
+	var index int
+	is.get = func() (Datum, error) {
+		d := get(index)
+		index++
+		if index >= l {
+			index = 0
 		}
-	} else { // must be a Slice
-		if v.Len() == 0 {
-			return nil, errors.Errorf("Must be supplied data; len(dataset) == 0")
-		}
+		return d, nil
+	}
 
-		var index = 0
-		if d, ok := dataset.([][][]float64); ok {
-			get = func() Datum {
-				i := index
-				index++
-				if index >= len(d) {
-					index = 0
-				}
-				return toDatum(d[i])
-			}
-		} else if d, ok := dataset.([]Datum); ok {
-			get = func() Datum {
-				i := index
-				index++
-				if index >= len(d) {
-					index = 0
-				}
-				return d[i]
-			}
-		} else {
-			return nil, errors.Errorf("%T is not a compatible type", dataset)
+	if setEnded != nil {
+		is.setEnded = func() bool {
+			return setEnded(index)
 		}
 	}
 
-	var iteration int
+	is.batchEnded = func() bool {
+		return batchEnded(index)
+	}
 
-	return func() (Datum, bool, error) {
-		iteration++
-		return get(), endBatch(iteration - 1), nil
-	}, nil
+	is.doneTesting = func() bool {
+		return index == 0
+	}
+
+	return is, nil
 }

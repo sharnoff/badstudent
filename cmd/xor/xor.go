@@ -33,12 +33,12 @@ const (
 )
 
 func train(net *bs.Network, dataset [][][]float64) {
-	trainData, err := bs.Data(dataset, bs.BatchEvery(batchSize))
+	trainData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(batchSize))
 	if err != nil {
 		panic(err.Error())
 	}
 
-	testData, err := bs.Data(dataset, bs.BatchEvery(len(dataset)))
+	testData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(len(dataset)))
 	if err != nil {
 		panic(err.Error())
 	}
@@ -46,9 +46,9 @@ func train(net *bs.Network, dataset [][][]float64) {
 	res := make(chan bs.Result)
 
 	args := bs.TrainArgs{
-		Data:         trainData,
+		TrainData:    trainData,
 		TestData:     testData,
-		ShouldTest:   bs.Every(testFrequency),
+		ShouldTest:   bs.EndEvery(testFrequency),
 		SendStatus:   bs.Every(statusFrequency),
 		RunCondition: bs.TrainUntil(maxIterations),
 		LearningRate: bs.ConstantRate(learningRate),
@@ -94,7 +94,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 }
 
 func test(net *bs.Network, dataset [][][]float64) {
-	testData, err := bs.Data(dataset, bs.BatchEvery(len(dataset)))
+	testData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(len(dataset)))
 	if err != nil {
 		panic(err.Error())
 	}
