@@ -79,8 +79,10 @@ func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
 		return errors.Errorf("Network has finished construction")
 	} else if !n.IsPlaceholder() {
 		return errors.Errorf("Node is not a placeholder")
-	} else if typ == nil {
-		return errors.Errorf("Operator is nil")
+	} else if typ == nil && len(inputs) != 0 {
+		return errors.Errorf("Operator is nil and Node is not an input")
+	} else if typ != nil && len(inputs) == 0 {
+		return errors.Errorf("Operator is not nil, but Node is an input")
 	} else if delay < 0 {
 		return errors.Errorf("Node must have delay of 0 or above")
 	} else if len(inputs) == 0 && delay > 0 {
@@ -104,8 +106,11 @@ func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
 	n.inputs = new(nodeGroup)
 	n.inputs.add(inputs...)
 
-	if err := typ.Init(n); err != nil {
-		return errors.Wrapf(err, "Initializing Operator failed\n", n)
+	// if n isn't an input layer
+	if len(inputs) != 0 {
+		if err := typ.Init(n); err != nil {
+			return errors.Wrapf(err, "Initializing Operator failed\n", n)
+		}
 	}
 
 	n.typ = typ

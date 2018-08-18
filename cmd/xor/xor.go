@@ -120,7 +120,6 @@ func load() (net *bs.Network) {
 	fmt.Println("Loading...")
 	path := "xor save"
 	types := map[string]bs.Operator{
-		"input":                 operators.Neurons(optimizers.GradientDescent()),
 		"hidden layer neurons":  operators.Neurons(optimizers.GradientDescent()),
 		"loop":                  operators.Neurons(optimizers.GradientDescent()),
 		"loop logistic":         operators.Logistic(),
@@ -152,7 +151,7 @@ func main() {
 		var err error
 		var l, loop, loopAF *bs.Node
 
-		if l, err = net.Add("input", operators.Neurons(optimizers.GradientDescent()), 2, 0); err != nil {
+		if l, err = net.Add("input", nil, 2, 0); err != nil {
 			panic(err.Error())
 		}
 

@@ -126,7 +126,11 @@ func (net *Network) checkOutputs() error {
 			// condition for running
 			if !n.completed || (!n.deltasMatter && deltasMatter) {
 
-				deltasMatter = deltasMatter || n.typ.CanBeAdjusted(n)
+				if n.IsInput() {
+					deltasMatter = false
+				} else {
+					deltasMatter = deltasMatter || n.typ.CanBeAdjusted(n)
+				}
 				n.deltasMatter = deltasMatter
 				n.completed = true
 
@@ -446,6 +450,10 @@ func (net *Network) adjust(learningRate float64, saveChanges bool) error {
 }
 
 func (n *Node) addWeights() error {
+	if n.IsInput() {
+		return nil
+	}
+
 	if err := n.typ.AddWeights(n); err != nil {
 		return errors.Wrapf(err, "Operator failed to add weights\n", n)
 	}

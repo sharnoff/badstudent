@@ -88,8 +88,10 @@ func (n *Node) writeFile(dirPath string) error {
 
 	f.Close()
 
-	if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
-		return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
+	if !n.IsInput() {
+		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
+			return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
+		}	
 	}
 
 	return nil
@@ -187,8 +189,8 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	}
 
 	for id, n := range net.nodesByID {
-		if types[n.name] == nil {
-			return nil, errors.Errorf("No Operator given for Node %v (id %d)", n, id)
+		if types[n.name] == nil && len(inputsPerNodeID[id]) != 0 {
+			return nil, errors.Errorf("No Operator given for non-input Node %v (id %d)", n, id)
 		}
 
 		err = n.loadReplace(types[n.name], aux[n.name], dirPath+"/"+strconv.Itoa(id), delays[id], idsToNodes(net.nodesByID, inputsPerNodeID[id]))
@@ -215,8 +217,10 @@ func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, delay i
 	n.inputs = new(nodeGroup)
 	n.inputs.add(inputs...)
 
-	if err := typ.Load(n, path, aux); err != nil {
-		return errors.Wrapf(err, "Initializing Operator failed\n", n)
+	if !n.IsInput() {
+		if err := typ.Load(n, path, aux); err != nil {
+			return errors.Wrapf(err, "Initializing Operator failed\n", n)
+		}
 	}
 
 	n.typ = typ
