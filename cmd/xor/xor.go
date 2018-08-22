@@ -6,6 +6,7 @@ import (
 	"github.com/sharnoff/badstudent/operators/optimizers"
 
 	"fmt"
+	"time"
 )
 
 func format(fs ...float64) (str string) {
@@ -59,6 +60,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 	}
 
 	fmt.Println("Starting training...")
+	startTime := time.Now()
 	go net.Train(args)
 	// fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
 
@@ -90,7 +92,7 @@ func train(net *bs.Network, dataset [][][]float64) {
 	}
 
 	// fmt.Printf("%d, %s\n", previousIteration, format(results...))
-	fmt.Println("Done training!")
+	fmt.Println("Done training! It took", time.Since(startTime).Seconds(), "seconds")
 }
 
 func test(net *bs.Network, dataset [][][]float64) {

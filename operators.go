@@ -33,7 +33,11 @@ type Operator interface {
 	// Should update the values of the node to reflect the inputs and weights (if any)
 	// arguments: given node, source slice for the values of that node
 	Evaluate(*Node, []float64) error
-	// Evaluate(l *Node, values []float64) error
+
+	// Should return the nth value of the Operator to reflect the inputs
+	//
+	// If anything goes wrong, panic.
+	Value(*Node, int) float64
 
 	// should add to the deltas of the given range of inputs how each of those values affects the
 	// total error through the values of the host node
@@ -47,25 +51,31 @@ type Operator interface {
 	// Is likely to be called in parallel for multiple inputs,
 	// so this needs to be thread-safe.
 	InputDeltas(*Node, func(int, float64), int, int) error
-	// InputDeltas(l *Node, add func(int, float64), input int) error
 
 	// returns whether or not Adjust() changes the outputs of the Node.
 	// generally will be whether or not the Node has weights
 	//
-	// will be run often, but probably should not change
-	// if it changes, there might be unforseen consequences
+	// will be run once, during setup. This should not change.
 	CanBeAdjusted(*Node) bool
+
+	// returns whether or not the the values of this Node are needed in order to
+	// calculate its deltas or adjust weights
+	NeedsValues(*Node) bool
+
+	// returns whether or not the input values to this Node are needed in order to
+	// calculate its deltas or adjust weights
+	//
+	// will likely be run multiple times during setup -- the result should remain the same
+	NeedsInputs(*Node) bool
 
 	// adjusts the weights of the given node, using its deltas
 	//
 	// args: node to adjust, the learning rate to proivde the optimizer,
 	// whether or not the changes from Adjust() should be applied immediately or stored
 	Adjust(*Node, float64, bool) error
-	// Adjust(l *Node, opt Optimizer, learningRate float64, saveChanges bool) error
 
 	// adds any changes to weights that have been delayed
 	//
 	// may be called without any changes waiting to happen
 	AddWeights(*Node) error
-	// AddWeights(l *Node) error
 }

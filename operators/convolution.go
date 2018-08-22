@@ -2,13 +2,13 @@ package operators
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sharnoff/badstudent"
+	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
+
 	"math/rand"
 
 	"encoding/json"
 	"os"
-	// "fmt"
 )
 
 // used to provide to the constructor (Convolution())
@@ -123,7 +123,7 @@ func Convolution(conv *ConvArgs, opt Optimizer) *convolution {
 	return c
 }
 
-func (c *convolution) Init(n *badstudent.Node) error {
+func (c *convolution) Init(n *bs.Node) error {
 	numDims := len(c.Outs.Dims)
 
 	// set defauts
@@ -197,7 +197,7 @@ func (c *convolution) Init(n *badstudent.Node) error {
 		for _, d := range c.Outs.Dims {
 			size *= d
 		}
-		if size * c.Depth != n.Size() {
+		if size*c.Depth != n.Size() {
 			return errors.Errorf("Can't Init() convolutional node, volume of dimensions and depth is not equal to node size (%d * %d != %d)", size, c.Depth, n.Size())
 		}
 
@@ -235,8 +235,8 @@ func (c *convolution) Init(n *badstudent.Node) error {
 			filterSize++
 		}
 
-		c.Weights = make([]float64, filterSize * n.Size())
-		c.Changes = make([]float64, filterSize * n.Size())
+		c.Weights = make([]float64, filterSize*n.Size())
+		c.Changes = make([]float64, filterSize*n.Size())
 
 		// initialize weights
 		for i := range c.Weights {
@@ -248,7 +248,7 @@ func (c *convolution) Init(n *badstudent.Node) error {
 	return nil
 }
 
-func (c *convolution) Save(n *badstudent.Node, dirPath string) error {
+func (c *convolution) Save(n *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -274,7 +274,7 @@ func (c *convolution) Save(n *badstudent.Node, dirPath string) error {
 		f.Close()
 	}
 
-	if err = c.opt.Save(n, c, dirPath + "/opt"); err != nil {
+	if err = c.opt.Save(n, c, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -283,7 +283,7 @@ func (c *convolution) Save(n *badstudent.Node, dirPath string) error {
 
 // does not check if the loaded data is intact
 // only needs to be provided an empty struct; everything else will be filled in
-func (c *convolution) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+func (c *convolution) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -313,7 +313,7 @@ func (c *convolution) Load(n *badstudent.Node, dirPath string, aux []interface{}
 	return nil
 }
 
-func (c *convolution) Evaluate(n *badstudent.Node, values []float64) error {
+func (c *convolution) Evaluate(n *bs.Node, values []float64) error {
 	inputs := n.CopyOfInputs()
 
 	// dimensions, with depth appended to the end
@@ -398,7 +398,11 @@ func (c *convolution) Evaluate(n *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (c *convolution) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
+func (c *convolution) Value(n *bs.Node, index int) float64 {
+	panic("Cannot get value for convolutional layer")
+}
+
+func (c *convolution) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 
 	filterSize := 1
 	for _, d := range c.Filter.Dims {
@@ -420,9 +424,10 @@ func (c *convolution) InputDeltas(n *badstudent.Node, add func(int, float64), st
 		// smallest values of 'f'
 		f_init := make([]int, len(c.Filter.Dims))
 
+		// for an explanation of why/how this works, see: cs231n.github.io/convolutional-networks/#conv
 		for i := range out_init {
 			l := n.NumInputs()
-			n := input[i]
+			n := input[i] // redefines 'n' to something more useful
 			f := c.Filter.Dims[i]
 			p := c.ZeroPadding[i]
 			s := c.Stride[i]
@@ -430,8 +435,8 @@ func (c *convolution) InputDeltas(n *badstudent.Node, add func(int, float64), st
 			r := n + f - l - p
 			o := (n + p) / s
 
-			if s * o + f >= l + (2 * p) {
-				if r % s != 0 {
+			if s*o+f >= l+(2*p) {
+				if r%s != 0 {
 					out_init[i] = o - (r / s) - 1
 				} else {
 					out_init[i] = o - (r / s)
@@ -501,11 +506,21 @@ func (c *convolution) InputDeltas(n *badstudent.Node, add func(int, float64), st
 	return nil
 }
 
-func (c *convolution) CanBeAdjusted(n *badstudent.Node) bool {
+func (c *convolution) CanBeAdjusted(n *bs.Node) bool {
 	return true
 }
 
-func (c *convolution) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+// for now, we're saying that it needs values because it's too hard to rework it right now
+// Yay! Technical debt!
+func (c *convolution) NeedsValues(n *bs.Node) bool {
+	return true
+}
+
+func (c *convolution) NeedsInputs(n *bs.Node) bool {
+	return true
+}
+
+func (c *convolution) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
 	inputs := n.CopyOfInputs()
 
 	// either 'c.Weights' or 'c.Changes'
@@ -562,7 +577,7 @@ func (c *convolution) Adjust(n *badstudent.Node, learningRate float64, saveChang
 	return nil
 }
 
-func (c *convolution) AddWeights(n *badstudent.Node) error {
+func (c *convolution) AddWeights(n *bs.Node) error {
 	for i := range c.Weights {
 		c.Weights[i] += c.Changes[i]
 	}

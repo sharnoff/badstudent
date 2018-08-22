@@ -37,8 +37,13 @@ func (net *Network) ClearDelays() {
 	}
 }
 
-// Checks that all Nodes affect the outputs of the network
-func (net *Network) checkOutputs() error {
+// Checks:
+// * all nodes affect outputs
+// * there are no loops with zero delay
+// Determines:
+// * each node's need for having its own deltas calculated
+// * each node's need for having its own values stored
+func (net *Network) finalize() error {
 	if net.stat >= finalized {
 		return nil
 	}
@@ -75,7 +80,7 @@ func (net *Network) checkOutputs() error {
 		net.resetCompletion()
 	}
 
-	// Check that there are no loops (with no delay) --> delay will be added later
+	// Check that there are no loops with zero delay
 	if net.mayHaveLoop {
 		var check func(*Node, int) error
 
@@ -147,6 +152,27 @@ func (net *Network) checkOutputs() error {
 		}
 
 		net.resetCompletion()
+	}
+
+	// determine each node's need for having values calculated
+	{
+		for _, n := range net.nodesByID {
+			// n.keepsValues defaults to false
+
+			if n.outputs.size() > 1 || (n.outputs.size() == 1 && n.IsOutput()) ||
+				n.group != nil || n.Delay() != 0 || (n.deltasMatter && n.typ.NeedsValues(n)) {
+
+				n.keepsValues = true
+				continue
+			}
+
+			for _, o := range n.outputs.nodes {
+				if o.deltasMatter && o.typ.NeedsInputs(n) {
+					n.keepsValues = true
+					break // breaks out of inner loop -- nothing left in outer
+				}
+			}
+		}
 	}
 
 	return nil

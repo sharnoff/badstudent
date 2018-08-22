@@ -2,8 +2,9 @@ package operators
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sharnoff/badstudent"
+	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
+
 	"math"
 	"runtime"
 )
@@ -16,7 +17,7 @@ func Logistic() logistic {
 	return logistic(0)
 }
 
-func (t logistic) Init(n *badstudent.Node) error {
+func (t logistic) Init(n *bs.Node) error {
 	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
@@ -24,11 +25,11 @@ func (t logistic) Init(n *badstudent.Node) error {
 	return nil
 }
 
-func (t logistic) Save(n *badstudent.Node, dirPath string) error {
+func (t logistic) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t logistic) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+func (t logistic) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't load logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
@@ -36,7 +37,7 @@ func (t logistic) Load(n *badstudent.Node, dirPath string, aux []interface{}) er
 	return nil
 }
 
-func (t logistic) Evaluate(n *badstudent.Node, values []float64) error {
+func (t logistic) Evaluate(n *bs.Node, values []float64) error {
 	inputs := n.CopyOfInputs()
 
 	f := func(i int) {
@@ -51,10 +52,14 @@ func (t logistic) Evaluate(n *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (t logistic) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
+func (t logistic) Value(n *bs.Node, index int) float64 {
+	return 0.5 + 0.5*math.Tanh(0.5*n.InputValue(index))
+}
+
+func (t logistic) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 
 	f := func(i int) {
-		add(i-start, n.Delta(i) * n.Value(i) * (1 - n.Value(i)))
+		add(i-start, n.Delta(i)*n.Value(i)*(1-n.Value(i)))
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
@@ -65,14 +70,22 @@ func (t logistic) InputDeltas(n *badstudent.Node, add func(int, float64), start,
 	return nil
 }
 
-func (t logistic) CanBeAdjusted(n *badstudent.Node) bool {
+func (t logistic) CanBeAdjusted(n *bs.Node) bool {
 	return false
 }
 
-func (t logistic) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+func (t logistic) NeedsValues(n *bs.Node) bool {
+	return true
+}
+
+func (t logistic) NeedsInputs(n *bs.Node) bool {
+	return false
+}
+
+func (t logistic) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (t logistic) AddWeights(n *badstudent.Node) error {
+func (t logistic) AddWeights(n *bs.Node) error {
 	return nil
 }

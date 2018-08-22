@@ -2,7 +2,7 @@ package operators
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sharnoff/badstudent"
+	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
 
 	"encoding/json"
@@ -96,7 +96,7 @@ func LeakyMaxPool(args *PoolArgs, leakFactor float64) *leakyMaxPool {
 // AvgPool:
 // ***************************************************
 
-func (a *avgPool) Init(n *badstudent.Node) error {
+func (a *avgPool) Init(n *bs.Node) error {
 
 	numDims := len(a.Outs.Dims)
 
@@ -183,7 +183,7 @@ func (a *avgPool) Init(n *badstudent.Node) error {
 	return nil
 }
 
-func (a *avgPool) Save(n *badstudent.Node, dirPath string) error {
+func (a *avgPool) Save(n *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -203,7 +203,7 @@ func (a *avgPool) Save(n *badstudent.Node, dirPath string) error {
 	return nil
 }
 
-func (a *avgPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+func (a *avgPool) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -220,7 +220,7 @@ func (a *avgPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) er
 	return nil
 }
 
-func (a *avgPool) Evaluate(n *badstudent.Node, values []float64) error {
+func (a *avgPool) Evaluate(n *bs.Node, values []float64) error {
 	inputs := n.CopyOfInputs()
 
 	filterSize := 1
@@ -253,7 +253,11 @@ func (a *avgPool) Evaluate(n *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (a *avgPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
+func (a *avgPool) Value(n *bs.Node, index int) float64 {
+	panic("Cannot get value for pool layer")
+}
+
+func (a *avgPool) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 
 	filterSize := 1
 	for _, d := range a.Filter.Dims {
@@ -345,15 +349,25 @@ func (a *avgPool) InputDeltas(n *badstudent.Node, add func(int, float64), start,
 	return nil
 }
 
-func (a *avgPool) CanBeAdjusted(n *badstudent.Node) bool {
+func (a *avgPool) CanBeAdjusted(n *bs.Node) bool {
 	return false
 }
 
-func (a *avgPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+// for now, we're saying that it needs values because it's too hard to rework it right now
+// Yay! Technical debt!
+func (a *avgPool) NeedsValues(n *bs.Node) bool {
+	return true
+}
+
+func (a *avgPool) NeedsInputs(n *bs.Node) bool {
+	return true
+}
+
+func (a *avgPool) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (a *avgPool) AddWeights(n *badstudent.Node) error {
+func (a *avgPool) AddWeights(n *bs.Node) error {
 	return nil
 }
 
@@ -361,7 +375,7 @@ func (a *avgPool) AddWeights(n *badstudent.Node) error {
 // MaxPool:
 // ***************************************************
 
-func (mp *maxPool) Init(n *badstudent.Node) error {
+func (mp *maxPool) Init(n *bs.Node) error {
 
 	numDims := len(mp.Outs.Dims)
 
@@ -448,7 +462,7 @@ func (mp *maxPool) Init(n *badstudent.Node) error {
 	return nil
 }
 
-func (mp *maxPool) Save(n *badstudent.Node, dirPath string) error {
+func (mp *maxPool) Save(n *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -468,7 +482,7 @@ func (mp *maxPool) Save(n *badstudent.Node, dirPath string) error {
 	return nil
 }
 
-func (mp *maxPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+func (mp *maxPool) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -485,7 +499,7 @@ func (mp *maxPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) e
 	return nil
 }
 
-func (mp *maxPool) Evaluate(n *badstudent.Node, values []float64) error {
+func (mp *maxPool) Evaluate(n *bs.Node, values []float64) error {
 	inputs := n.CopyOfInputs()
 
 	filterSize := 1
@@ -530,7 +544,11 @@ func (mp *maxPool) Evaluate(n *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (mp *maxPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
+func (mp *maxPool) Value(n *bs.Node, index int) float64 {
+	panic("Cannot get value for pool layer")
+}
+
+func (mp *maxPool) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 
 	sendDelta := func(inputIndex int) {
 		input := mp.Ins.Point(inputIndex)
@@ -616,15 +634,25 @@ func (mp *maxPool) InputDeltas(n *badstudent.Node, add func(int, float64), start
 	return nil
 }
 
-func (mp *maxPool) CanBeAdjusted(n *badstudent.Node) bool {
+func (mp *maxPool) CanBeAdjusted(n *bs.Node) bool {
 	return false
 }
 
-func (mp *maxPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+// for now, we're saying that it needs values because it's too hard to rework it right now
+// Yay! Technical debt!
+func (mp *maxPool) NeedsValues(n *bs.Node) bool {
+	return true
+}
+
+func (mp *maxPool) NeedsInputs(n *bs.Node) bool {
+	return true
+}
+
+func (mp *maxPool) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (mp *maxPool) AddWeights(n *badstudent.Node) error {
+func (mp *maxPool) AddWeights(n *bs.Node) error {
 	return nil
 }
 
@@ -632,7 +660,7 @@ func (mp *maxPool) AddWeights(n *badstudent.Node) error {
 // LeakyMaxPool:
 // ***************************************************
 
-func (lmp *leakyMaxPool) Init(n *badstudent.Node) error {
+func (lmp *leakyMaxPool) Init(n *bs.Node) error {
 
 	numDims := len(lmp.Outs.Dims)
 
@@ -728,7 +756,7 @@ func (lmp *leakyMaxPool) Init(n *badstudent.Node) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) Save(n *badstudent.Node, dirPath string) error {
+func (lmp *leakyMaxPool) Save(n *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -748,7 +776,7 @@ func (lmp *leakyMaxPool) Save(n *badstudent.Node, dirPath string) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) Load(n *badstudent.Node, dirPath string, aux []interface{}) error {
+func (lmp *leakyMaxPool) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -765,7 +793,7 @@ func (lmp *leakyMaxPool) Load(n *badstudent.Node, dirPath string, aux []interfac
 	return nil
 }
 
-func (lmp *leakyMaxPool) Evaluate(n *badstudent.Node, values []float64) error {
+func (lmp *leakyMaxPool) Evaluate(n *bs.Node, values []float64) error {
 
 	inputs := n.CopyOfInputs()
 
@@ -813,7 +841,11 @@ func (lmp *leakyMaxPool) Evaluate(n *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) InputDeltas(n *badstudent.Node, add func(int, float64), start, end int) error {
+func (lmp *leakyMaxPool) Value(n *bs.Node, index int) float64 {
+	panic("Cannot get value for pool layer")
+}
+
+func (lmp *leakyMaxPool) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 	filterSize := 1
 	for _, d := range lmp.Filter.Dims {
 		filterSize *= d
@@ -907,14 +939,24 @@ func (lmp *leakyMaxPool) InputDeltas(n *badstudent.Node, add func(int, float64),
 	return nil
 }
 
-func (lmp *leakyMaxPool) CanBeAdjusted(n *badstudent.Node) bool {
+func (lmp *leakyMaxPool) CanBeAdjusted(n *bs.Node) bool {
 	return false
 }
 
-func (lmp *leakyMaxPool) Adjust(n *badstudent.Node, learningRate float64, saveChanges bool) error {
+// for now, we're saying that it needs values because it's too hard to rework it right now
+// Yay! Technical debt!
+func (lmp *leakyMaxPool) NeedsValues(n *bs.Node) bool {
+	return true
+}
+
+func (lmp *leakyMaxPool) NeedsInputs(n *bs.Node) bool {
+	return true
+}
+
+func (lmp *leakyMaxPool) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
 	return nil
 }
 
-func (lmp *leakyMaxPool) AddWeights(n *badstudent.Node) error {
+func (lmp *leakyMaxPool) AddWeights(n *bs.Node) error {
 	return nil
 }

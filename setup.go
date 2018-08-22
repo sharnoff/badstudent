@@ -30,7 +30,7 @@ func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*N
 	if err := n.Replace(typ, delay, inputs...); err != nil {
 		net.nodesByName[name] = nil
 
-		copy(net.nodesByID[n.id:], net.nodesByID[n.id + 1:])
+		copy(net.nodesByID[n.id:], net.nodesByID[n.id+1:])
 		net.nodesByID = net.nodesByID[:len(net.nodesByID)-1]
 
 		return n, err
@@ -89,17 +89,15 @@ func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
 		return errors.Errorf("Input nodes cannot have delay (delay = %d)", delay)
 	}
 
-	for _, in := range inputs {
-		if in.id > n.id {
-			n.host.mayHaveLoop = true
-		}
-	}
-
 	for i, in := range inputs {
 		if in == nil {
 			return errors.Errorf("Input %d to node %v is nil", i)
 		} else if in.host != n.host {
 			return errors.Errorf("Input %d (%v) to %v does not belong to the same Network", i, in, n)
+		}
+
+		if in.id > n.id {
+			n.host.mayHaveLoop = true
 		}
 	}
 
@@ -190,7 +188,7 @@ func (net *Network) SetOutputs(outputs ...*Node) error {
 	net.outputs = new(nodeGroup)
 	net.outputs.add(outputs...)
 
-	if err := net.checkOutputs(); err != nil {
+	if err := net.finalize(); err != nil {
 		return err
 	}
 

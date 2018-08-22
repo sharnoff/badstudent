@@ -46,7 +46,11 @@ func (n *Node) Size() int {
 
 // Returns the value of the Node at the specified index
 func (n *Node) Value(index int) float64 {
-	return n.values[index]
+	if n.keepsValues {
+		return n.values[index]
+	}
+
+	return n.typ.Value(n, index)
 }
 
 // returns the value of the input to the Node at that index

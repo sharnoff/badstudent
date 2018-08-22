@@ -74,14 +74,22 @@ type Node struct {
 	typ Operator
 
 	// the values of the node -- essentially its outputs
+	//
+	// even if the values are not stored in the node, this will
+	// still have the length of the number of the node's values,
+	// for syntactic simplicity
 	values []float64
 
 	// the derivative of each value w.r.t. the total cost
 	// of the particular training example
 	deltas []float64 // δ
 
-	//
+	// whether or not the deltas of the node will actually be calculated
 	deltasMatter bool
+
+	// whether or not the values of the node will be stored here
+	// (instead of just being passed on)
+	keepsValues bool
 
 	// The set of Nodes that the given Node takes input from
 	inputs *nodeGroup

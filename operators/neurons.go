@@ -2,8 +2,9 @@ package operators
 
 import (
 	"github.com/pkg/errors"
-	"github.com/sharnoff/badstudent"
+	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
+
 	"math/rand"
 
 	"encoding/json"
@@ -28,7 +29,11 @@ func Neurons(opt Optimizer) *neurons {
 
 const bias_value float64 = 1
 
-func (n *neurons) Init(nd *badstudent.Node) error {
+func (n *neurons) Init(nd *bs.Node) error {
+
+	if nd.NumInputs() == 0 {
+		return errors.Errorf("Neurons must have inputs (NumInputs() == %d)", nd.NumInputs())
+	}
 
 	n.Weights = make([][]float64, nd.Size())
 	n.WeightChanges = make([][]float64, nd.Size())
@@ -53,7 +58,7 @@ func (n *neurons) Init(nd *badstudent.Node) error {
 }
 
 // encodes 'n' via JSON into 'weights.txt'
-func (n *neurons) Save(nd *badstudent.Node, dirPath string) error {
+func (n *neurons) Save(nd *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
 	}
@@ -79,7 +84,7 @@ func (n *neurons) Save(nd *badstudent.Node, dirPath string) error {
 		f.Close()
 	}
 
-	if err = n.opt.Save(nd, n, dirPath + "/opt"); err != nil {
+	if err = n.opt.Save(nd, n, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -87,7 +92,7 @@ func (n *neurons) Save(nd *badstudent.Node, dirPath string) error {
 }
 
 // decodes JSON from 'weights.txt'
-func (n *neurons) Load(nd *badstudent.Node, dirPath string, aux []interface{}) error {
+func (n *neurons) Load(nd *bs.Node, dirPath string, aux []interface{}) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -120,14 +125,14 @@ func (n *neurons) Load(nd *badstudent.Node, dirPath string, aux []interface{}) e
 		}
 	}
 
-	if err = n.opt.Load(nd, n, dirPath + "/opt", aux); err != nil {
+	if err = n.opt.Load(nd, n, dirPath+"/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
 	return nil
 }
 
-func (n *neurons) Evaluate(nd *badstudent.Node, values []float64) error {
+func (n *neurons) Evaluate(nd *bs.Node, values []float64) error {
 
 	inputs := nd.CopyOfInputs()
 	calculateValue := func(i int) {
@@ -145,7 +150,18 @@ func (n *neurons) Evaluate(nd *badstudent.Node, values []float64) error {
 	return nil
 }
 
-func (n *neurons) InputDeltas(nd *badstudent.Node, add func(int, float64), start, end int) error {
+func (n *neurons) Value(nd *bs.Node, index int) float64 {
+	var sum float64
+	var in int
+	for inv := range nd.InputIterator() {
+		sum += n.Weights[index][in] * inv
+		in++
+	}
+
+	return sum + (n.Biases[index] * bias_value)
+}
+
+func (n *neurons) InputDeltas(nd *bs.Node, add func(int, float64), start, end int) error {
 
 	sendDelta := func(i int) {
 		var sum float64
@@ -163,11 +179,19 @@ func (n *neurons) InputDeltas(nd *badstudent.Node, add func(int, float64), start
 	return nil
 }
 
-func (n *neurons) CanBeAdjusted(nd *badstudent.Node) bool {
-	return (len(n.Weights[0]) != 0)
+func (n *neurons) CanBeAdjusted(nd *bs.Node) bool {
+	return true
 }
 
-func (n *neurons) Adjust(nd *badstudent.Node, learningRate float64, saveChanges bool) error {
+func (n *neurons) NeedsValues(nd *bs.Node) bool {
+	return false
+}
+
+func (n *neurons) NeedsInputs(nd *bs.Node) bool {
+	return true
+}
+
+func (n *neurons) Adjust(nd *bs.Node, learningRate float64, saveChanges bool) error {
 	inputs := nd.CopyOfInputs()
 
 	if len(inputs) == 0 {
@@ -197,7 +221,7 @@ func (n *neurons) Adjust(nd *badstudent.Node, learningRate float64, saveChanges 
 			targetWeights[v][in] += addend
 		}
 
-		if err := n.opt.Run(nd, len(inputs) * nd.Size(), grad, add, learningRate); err != nil {
+		if err := n.opt.Run(nd, len(inputs)*nd.Size(), grad, add, learningRate); err != nil {
 			return errors.Wrapf(err, "Couldn't adjust node %v, running optimizer on weights failed\n", nd)
 		}
 	}
@@ -220,7 +244,7 @@ func (n *neurons) Adjust(nd *badstudent.Node, learningRate float64, saveChanges 
 	return nil
 }
 
-func (n *neurons) AddWeights(nd *badstudent.Node) error {
+func (n *neurons) AddWeights(nd *bs.Node) error {
 	for v := range n.Weights {
 		for in := range n.Weights[v] {
 			n.Weights[v][in] += n.WeightChanges[v][in]

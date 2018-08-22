@@ -103,6 +103,10 @@ func (ng *nodeGroup) setValues(values []float64) error {
 		copy(ng.values, values)
 	} else {
 		for i, n := range ng.nodes {
+			if !n.keepsValues {
+				return errors.Errorf("Node %v (#%d) in group does not hold own values", n, i)
+			}
+
 			n.values = values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
 		}
 	}
@@ -124,7 +128,14 @@ func (ng *nodeGroup) getValues(dupe bool) []float64 {
 	} else { // not continuous
 		values := make([]float64, ng.size())
 		for i, n := range ng.nodes {
-			copy(values[ng.sumVals[i]-n.Size():], n.values)
+			if n.keepsValues {
+				copy(values[ng.sumVals[i]-n.Size():], n.values)
+			} else { // node does not store own values
+				place := ng.sumVals[i] - n.Size()
+				for v := 0; v < n.Size(); v++ {
+					values[place+v] = n.Value(v)
+				}
+			}
 		}
 		return values
 	}
