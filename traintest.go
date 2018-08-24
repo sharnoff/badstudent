@@ -58,6 +58,7 @@ type DataSupplier interface {
 	Get() (Datum, error)
 
 	// Only for recurrent networks: true iff there is no more data in the most recent set
+	// Will not be used if IsSequential() returns false
 	SetEnded() bool
 
 	// Whether or not the most recent batch has ended

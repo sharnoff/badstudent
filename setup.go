@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (net *Network) init() {
+func (net *Network) initialize() {
 	if net.nodesByName != nil {
 		return
 	}
@@ -42,7 +42,7 @@ func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*N
 // Returns a placeholder Node that can be used as input, later to have its own inputs set
 // This Node must have been replaced before the outputs of the network can be set
 func (net *Network) Placeholder(name string, size int) (*Node, error) {
-	net.init()
+	net.initialize()
 
 	if size < 1 {
 		return nil, errors.Errorf("Node must have size >= 1 (%d)", size)

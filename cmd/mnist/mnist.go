@@ -9,12 +9,13 @@
 package main
 
 import (
-	"github.com/sharnoff/badstudent"
+	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/operators/optimizers"
 
 	"fmt"
 	"github.com/pkg/errors"
+	"time"
 
 	"bufio"
 	"os"
@@ -23,50 +24,97 @@ import (
 )
 
 const (
-	imgSize    int = 784   // 28x28
-	numOptions int = 10    // 0->9
-	testSize   int = 10000 // 10 000
+	imgSize    int     = 784 // 28x28
+	numClasses int     = 10  // 0 -> 9
+	maxInput   float64 = 255
+
+	trainFile string = "resources/mnist_train.csv"
+	testFile  string = "resources/mnist_test.csv"
+	path      string = "resources/mnist_save"
 )
 
-// classifier should be at index 0
-func image(str string) ([][]uint8, error) {
+type dataset struct {
+	inputs  [][]uint8
+	outputs []int // one-hot encoding = true
+
+	index int
+}
+
+func (d *dataset) IsSequential() bool {
+	return false
+}
+
+func (d *dataset) Get() (bs.Datum, error) {
+	// cast inputs into []float64
+	ins := make([]float64, imgSize)
+	for i, in := range d.inputs[d.index] {
+		ins[i] = float64(in) / maxInput
+	}
+
+	// transfer from one-hot encoding
+	outs := make([]float64, numClasses)
+	outs[d.outputs[d.index]] = 1
+
+	d.index++
+	if d.index >= len(d.inputs) {
+		d.index = 0
+	}
+
+	return bs.Datum{ins, outs}, nil
+}
+
+func (d *dataset) SetEnded() bool {
+	return true
+}
+
+func (d *dataset) BatchEnded() bool {
+	return d.index%batchSize == 0
+}
+
+func (d *dataset) DoneTesting() bool {
+	return d.index == 0
+}
+
+func image(str string) (ins []uint8, class int, err error) {
 	s := strings.Split(str, ",")
 
 	if len(s) != (imgSize + 1) {
-		return nil, errors.Errorf("Can't get image, not enough values from line (had %d, should be %d)", len(s), imgSize+1)
+		err = errors.Errorf("Can't get image, not enough values from line (had %d, should be %d)", len(s), imgSize+1)
+		return
 	}
 
-	img := make([][]uint8, 2) // one for inputs, one for outputs
-
 	{
-		class, err := strconv.ParseInt(s[0], 10, 0)
+		var c int64
+		c, err = strconv.ParseInt(s[0], 10, 0)
+		class = int(c)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Couldn't parse value of classifier (given: %s)\n", s[0])
-		} else if class >= int64(numOptions) {
-			return nil, errors.Errorf("Classifier is out of bounds (%d >= %d)", class, numOptions)
+			err = errors.Wrapf(err, "Couldn't parse value of classifier (given: %s)\n", s[0])
+			return
+		} else if class >= numClasses {
+			err = errors.Errorf("Classifier is out of bounds (%d >= %d)", class, numClasses)
+			return
 		}
-
-		img[1] = make([]uint8, numOptions)
-		img[1][class] = 1
 	}
 
 	{
-		img[0] = make([]uint8, imgSize)
+		ins = make([]uint8, imgSize)
 
 		for i := 0; i < imgSize; i++ {
-			v, err := strconv.ParseInt(s[i+1], 10, 0)
+			var v int64
+			v, err = strconv.ParseInt(s[i+1], 10, 0)
 			if err != nil {
-				return nil, errors.Wrapf(err, "Couldn't parse value %d of line (given: %s)\n", i, s[i])
+				err = errors.Wrapf(err, "Couldn't parse value %d of line (given: %s)\n", i, s[i])
+				return
 			}
 
-			img[0][i] = uint8(v)
+			ins[i] = uint8(v)
 		}
 	}
 
-	return img, nil
+	return
 }
 
-func data(fileName string) ([][][]uint8, error) {
+func data(fileName string) (*dataset, error) {
 	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Couldn't open file %s\n", fileName)
@@ -74,7 +122,7 @@ func data(fileName string) ([][][]uint8, error) {
 
 	defer f.Close()
 
-	var data [][][]uint8
+	ds := new(dataset)
 
 	sc := bufio.NewScanner(f)
 	for i := 0; ; i++ {
@@ -83,12 +131,13 @@ func data(fileName string) ([][][]uint8, error) {
 		}
 
 		str := sc.Text()
-		img, err := image(str)
+		ins, class, err := image(str)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Couldn't get image on line %d for file %s\n", i, fileName)
 		}
 
-		data = append(data, img)
+		ds.inputs = append(ds.inputs, ins)
+		ds.outputs = append(ds.outputs, class)
 	}
 
 	if err = sc.Err(); err != nil {
@@ -96,46 +145,16 @@ func data(fileName string) ([][][]uint8, error) {
 	}
 
 	// trim the array to make storage smaller
-	clone := make([][][]uint8, len(data))
-	copy(clone, data)
-	return clone, nil
-}
-
-func dataCh(data [][][]uint8, loop bool) func(chan bool, chan badstudent.Datum, *bool, *error) {
-
-	return func(request chan bool, dataSrc chan badstudent.Datum, moreData *bool, err *error) {
-		defer close(dataSrc)
-
-		for {
-			for _, d := range data {
-				req := <-request
-
-				if req == false {
-					return
-				}
-
-				in := make([]float64, len(d[0]))
-				for i := range in {
-					in[i] = float64(d[0][i])
-				}
-
-				out := make([]float64, len(d[1]))
-				for i := range out {
-					out[i] = float64(d[1][i])
-				}
-
-				dataSrc <- badstudent.Datum{in, out}
-
-			}
-
-			if !loop {
-				*moreData = false
-				break
-			}
-		}
-
-		return
+	{
+		inClone := make([][]uint8, len(ds.inputs))
+		outClone := make([]int, len(ds.outputs))
+		copy(inClone, ds.inputs)
+		copy(outClone, ds.outputs)
+		ds.inputs = inClone
+		ds.outputs = outClone
 	}
+
+	return ds, nil
 }
 
 func format(fs ...float64) (str string) {
@@ -149,139 +168,163 @@ func format(fs ...float64) (str string) {
 	return
 }
 
-func main() {
-	learningRate := 0.001
-	maxIterations := 10000 // 10 000
-	batchSize := 100
-	testFrequency := 2000
-	statusFrequency := 1000
-	trainFile := "resources/mnist_train.csv"
-	testFile := "resources/mnist_test.csv"
+const (
+	learningRate    float64 = 0.001
+	maxIterations   int     = 10000 // 10 000
+	batchSize       int     = 100
+	testFrequency   int     = 20000
+	statusFrequency int     = 1000
+)
 
-	// fmt.Println("Initializing network...")
-	net := new(badstudent.Network)
-	{
-		l, err := net.Add("inputs", operators.Neurons(optimizers.GradientDescent()), imgSize, 0)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		convArgs := operators.ConvArgs{
-			Dims:        []int{28, 28},
-			InputDims:   []int{28, 28},
-			Filter:      []int{5, 5},
-			ZeroPadding: []int{2, 2},
-			Biases:      true,
-		}
-		if l, err = net.Add("conv-1", operators.Convolution(&convArgs, optimizers.GradientDescent()), 784, 0, l); err != nil {
-			panic(err.Error())
-		}
-
-		poolArgs := operators.PoolArgs{
-			Dims:      []int{14, 14},
-			InputDims: []int{28, 28},
-			Filter:    []int{2, 2},
-			Stride:    []int{2, 2},
-		}
-		if l, err = net.Add("pool-1", operators.AvgPool(&poolArgs), 196, 0, l); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("pool-1 logistic", operators.Logistic(), 196, 0, l); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, 0, l); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("output logistic", operators.Logistic(), 10, 0, l); err != nil {
-			panic(err.Error())
-		}
-
-		if err = net.SetOutputs(l); err != nil {
-			panic(err.Error())
-		}
-	}
-	// fmt.Println("Done!")
-
-	// fmt.Println("Fetching data...")
-	var trainSrc, testSrc func(chan bool, chan badstudent.Datum, *bool, *error)
-	{
-		trainData, err := data(trainFile)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		testData, err := data(testFile)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		trainSrc = dataCh(trainData, true)
-		testSrc = dataCh(testData, false)
-	}
-	// fmt.Println("Done!")
-
-	var res chan badstudent.Result = make(chan badstudent.Result)
+func train(net *bs.Network, trainData, testData *dataset) {
+	res := make(chan bs.Result)
 	var err error
 
-	args := badstudent.TrainArgs{
-		Data:         trainSrc,
-		TestData:     testSrc,
-		ShouldTest:   badstudent.TestEvery(testFrequency, testSize),
-		SendStatus:   badstudent.Every(statusFrequency),
-		Batch:        badstudent.BatchEvery(batchSize),
-		RunCondition: badstudent.TrainUntil(maxIterations),
-		LearningRate: badstudent.ConstantRate(learningRate),
-		IsCorrect:    badstudent.CorrectHighest,
-		// CostFunc:  badstudent.SquaredError(false),
-		Results: res,
-		Err:     &err,
+	args := bs.TrainArgs{
+		TrainData:    trainData,
+		TestData:     testData,
+		ShouldTest:   bs.EndEvery(testFrequency),
+		SendStatus:   bs.Every(statusFrequency),
+		RunCondition: bs.TrainUntil(maxIterations),
+		LearningRate: bs.ConstantRate(learningRate),
+		IsCorrect:    bs.CorrectHighest,
+		Results:      res,
+		Err:          &err,
 	}
 
-	// fmt.Println("Starting training for", maxIterations, "iterations!")
-	{
-		go net.Train(args)
+	fmt.Println("Starting training...")
+	startTime := time.Now()
+	go net.Train(args)
+	fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
 
-		fmt.Println("Iteration, Train Cost, Train %, Test Cost, Test %")
+	// statusCost, statusPercent, testCost, testPercent
+	results := make([]float64, 4)
+	previousIteration := -1
 
-		// statusCost, statusPercent, testCost, testPercent
-		results := make([]float64, 4)
-		previousIteration := -1
+	for r := range res {
+		if r.Iteration > previousIteration && previousIteration >= 0 {
+			fmt.Printf("%d, %s\n", previousIteration, format(results...))
 
-		for r := range res {
-			if r.Iteration > previousIteration && previousIteration >= 0 {
-				fmt.Printf("%d, %s\n", previousIteration, format(results...))
-
-				results = make([]float64, len(results))
-			}
-
-			if r.IsTest {
-				results[2] = r.Avg
-				results[3] = r.Percent
-			} else {
-				results[0] = r.Avg
-				results[1] = r.Percent
-			}
-
-			previousIteration = r.Iteration
+			results = make([]float64, len(results))
 		}
 
-		if err != nil {
-			panic(err.Error())
+		if r.IsTest {
+			results[2] = r.Cost
+			results[3] = r.Correct * 100
+		} else {
+			results[0] = r.Cost
+			results[1] = r.Correct * 100
 		}
 
-		fmt.Printf("%d, %s\n", previousIteration, format(results...))
+		previousIteration = r.Iteration
 	}
-	// fmt.Println("Done training!")
 
-	// fmt.Println("Saving...")
-	{
-		path := "mnist save"
-		if err := net.Save(path, false); err != nil {
-			panic(err.Error())
-		}
+	if err != nil {
+		panic(err.Error())
 	}
-	// fmt.Println("Done!")
+
+	fmt.Printf("%d, %s\n", previousIteration, format(results...))
+	fmt.Println("Done training! It took", time.Since(startTime).Seconds(), "seconds")
+}
+
+func test(net *bs.Network, data *dataset) {
+	fmt.Println("Testing...")
+	startTime := time.Now()
+	_, _, err := net.Test(data, bs.SquaredError(true), bs.CorrectHighest)
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Println("Done testing! It took", time.Since(startTime).Seconds(), "seconds")
+}
+
+func save(net *bs.Network) {
+	fmt.Println("Saving...")
+	path := "xor save"
+	if err := net.Save(path, true); err != nil {
+		panic(err.Error())
+	}
+	fmt.Println("Done!")
+}
+
+func load() (net *bs.Network) {
+	fmt.Println("Loading...")
+	types := map[string]bs.Operator{
+		"conv-1":          operators.Convolution(nil, optimizers.GradientDescent()),
+		"pool-1":          operators.AvgPool(nil),
+		"pool-1 logistic": operators.Logistic(),
+		"output neurons":  operators.Neurons(optimizers.GradientDescent()),
+		"output logistic": operators.Logistic(),
+	}
+	// no auxiliary information necessary
+	var err error
+	if net, err = bs.Load(path, types, nil); err != nil {
+		panic(err.Error())
+	}
+	fmt.Println("Done!")
+
+	return
+}
+
+func initNet() (net *bs.Network) {
+	net = new(bs.Network)
+	l, err := net.Add("inputs", nil, imgSize, 0)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	convArgs := operators.ConvArgs{
+		Dims:        []int{28, 28},
+		InputDims:   []int{28, 28},
+		Filter:      []int{5, 5},
+		ZeroPadding: []int{2, 2},
+		Biases:      true,
+	}
+	if l, err = net.Add("conv-1", operators.Convolution(&convArgs, optimizers.GradientDescent()), 784, 0, l); err != nil {
+		panic(err.Error())
+	}
+
+	poolArgs := operators.PoolArgs{
+		Dims:      []int{14, 14},
+		InputDims: []int{28, 28},
+		Filter:    []int{2, 2},
+		Stride:    []int{2, 2},
+	}
+	if l, err = net.Add("pool-1", operators.AvgPool(&poolArgs), 196, 0, l); err != nil {
+		panic(err.Error())
+	}
+
+	if l, err = net.Add("pool-1 logistic", operators.Logistic(), 196, 0, l); err != nil {
+		panic(err.Error())
+	}
+
+	if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 10, 0, l); err != nil {
+		panic(err.Error())
+	}
+
+	if l, err = net.Add("output logistic", operators.Logistic(), 10, 0, l); err != nil {
+		panic(err.Error())
+	}
+
+	if err = net.SetOutputs(l); err != nil {
+		panic(err.Error())
+	}
+
+	return net
+}
+
+func main() {
+	trainData, err := data(trainFile)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	testData, err := data(testFile)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	net := initNet()
+	// net := load()
+	train(net, trainData, testData)
+	save(net)
 }
