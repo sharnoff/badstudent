@@ -42,6 +42,10 @@ func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*N
 // Returns a placeholder Node that can be used as input, later to have its own inputs set
 // This Node must have been replaced before the outputs of the network can be set
 func (net *Network) Placeholder(name string, size int) (*Node, error) {
+	if net == nil {
+		return nil, errors.Errorf("Network cannot be nil")
+	}
+
 	net.initialize()
 
 	if size < 1 {
