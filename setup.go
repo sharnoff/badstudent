@@ -14,6 +14,10 @@ func (net *Network) initialize() {
 	net.inputs = new(nodeGroup)
 }
 
+type Delay int
+
+const NoDelay Delay = 0
+
 // Adds a new node to the Network, with given name, size, inputs, and Operator
 // If no inputs are given, the node will be one of the input nodes, and its size added to the
 // number of inputs
@@ -21,7 +25,7 @@ func (net *Network) initialize() {
 // The name of each node must be unique, cannot be "", and cannot contain a double-quote (")
 //
 // if Add returns an error, the host Network will not have been changed
-func (net *Network) Add(name string, typ Operator, size, delay int, inputs ...*Node) (*Node, error) {
+func (net *Network) Add(name string, typ Operator, size int, delay Delay, inputs ...*Node) (*Node, error) {
 	n, err := net.Placeholder(name, size)
 	if err != nil {
 		return n, err
@@ -78,7 +82,7 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 // Sets the inputs and Operator of a placeholder Node
 //
 // Network must still be in construction
-func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
+func (n *Node) Replace(typ Operator, delay Delay, inputs ...*Node) error {
 	if n.host.stat > initialized {
 		return errors.Errorf("Network has finished construction")
 	} else if !n.IsPlaceholder() {
@@ -119,7 +123,7 @@ func (n *Node) Replace(typ Operator, delay int, inputs ...*Node) error {
 
 	n.delay = make(chan []float64, delay)
 	n.delayDeltas = make(chan []float64, delay)
-	for i := 0; i < delay; i++ {
+	for i := 0; i < int(delay); i++ {
 		n.delay <- make([]float64, len(n.values))
 		n.delayDeltas <- make([]float64, len(n.values))
 	}
