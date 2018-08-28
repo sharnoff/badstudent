@@ -98,7 +98,7 @@ func (net *Network) finalize() error {
 
 				if n == root {
 					if depth == 0 {
-						return errors.Errorf("Node %v recieves input from itself with no delay", root)
+						return errors.Errorf("Node %v receives input from itself with no delay", root)
 					}
 
 					return nil

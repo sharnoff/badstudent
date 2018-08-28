@@ -13,7 +13,7 @@
 // Networks are graphs of Nodes, from inputs to outputs, with each Node
 // holding its own Operator, which determines the values of the Node.
 // Operators can be made by the user for unique purposes, but common ones
-// can be found in subpackage badstudent/operators. Some Operators futher
+// can be found in subpackage badstudent/operators. Some Operators further
 // use a type defined in badstudent/operators and implemented in a
 // subpackage: Optimizer.
 //

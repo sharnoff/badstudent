@@ -89,7 +89,7 @@ func (m *MultiDim) Increment(point []int) bool {
 }
 
 // increments the point by the amount specified
-// cannnot accept negative numbers
+// cannot accept negative numbers
 //
 // returns false if the point is now outside the dimensions
 // if the point becomes out of bounds, it reduces it until it it just

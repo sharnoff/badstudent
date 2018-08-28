@@ -54,7 +54,7 @@ type nodeGroup struct {
 }
 
 // The Node is the fundamental building block with which the network is built.
-// Each node has a Operator, which determines how it changes the values it recieves as input
+// Each node has an Operator, which determines how it changes the values it receives as input
 type Node struct {
 	// The name that will be used to print this node.
 	// Used for unique identification, can be empty

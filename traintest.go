@@ -94,7 +94,7 @@ type TrainArgs struct {
 	// Can be nil if and only if ShouldTest is nil
 	TestData DataSupplier
 
-	// If omitted, TestData will recieve no use; TestData can be nil if this is nil
+	// If omitted, TestData will receive no use; TestData can be nil if this is nil
 	// Will be given the current iteration
 	//
 	// Testing is performed before training. Ex: if on iteration 'n', a batch is completed,
@@ -110,7 +110,7 @@ type TrainArgs struct {
 	// Will ignore 'true' on iteration 0
 	SendStatus func(int) bool
 
-	// Will be called at each sucessive iteration to determine if training should
+	// Will be called at each successive iteration to determine if training should
 	// continue. Training will stop if 'false' is returned.
 	//
 	// Will be given the iteration (starting at zero) and the error (cost) of the
@@ -271,7 +271,7 @@ func (net *Network) Train(args TrainArgs) {
 			*args.Err = errors.Wrapf(err, "Failed to get training data on iteration %d\n", d)
 			return
 		} else if !d.fits(net) {
-			*args.Err = errors.Errorf("Training data recieved for iteration %d does not fit Network", iteration)
+			*args.Err = errors.Errorf("Training data received for iteration %d does not fit Network", iteration)
 			return
 		}
 
