@@ -13,6 +13,11 @@ const threadSizeMultiplier int = 1
 
 type logistic int8
 
+// Logistic returns an operator that performs an element-wise application of
+// the logistic (or sigmoid) function, using math.Tanh().
+//
+// The logistic function can be written as:
+// l(x) = 0.5 + 0.5 * tanh(0.5 * x)
 func Logistic() logistic {
 	return logistic(0)
 }
@@ -30,10 +35,6 @@ func (t logistic) Save(n *bs.Node, dirPath string) error {
 }
 
 func (t logistic) Load(n *bs.Node, dirPath string, aux []interface{}) error {
-	if n.Size() != n.NumInputs() {
-		return errors.Errorf("Can't load logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
-	}
-
 	return nil
 }
 
@@ -56,6 +57,7 @@ func (t logistic) Value(n *bs.Node, index int) float64 {
 	return 0.5 + 0.5*math.Tanh(0.5*n.InputValue(index))
 }
 
+// The derivative of the logistic function l(x) is l(x) * (1 - l(x))
 func (t logistic) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 
 	f := func(i int) {

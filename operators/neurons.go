@@ -21,6 +21,7 @@ type neurons struct {
 	BiasChanges   []float64
 }
 
+// Neurons returns a basic layer of perceptrons with biases
 func Neurons(opt Optimizer) *neurons {
 	n := new(neurons)
 	n.opt = opt

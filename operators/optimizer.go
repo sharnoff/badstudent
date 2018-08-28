@@ -2,7 +2,8 @@ package operators
 
 import "github.com/sharnoff/badstudent"
 
-// The way in which the weights of any Operator provided here is adjusted
+// Optimizer is the way in which the weights of any Operator provided in
+// this package is adjusted
 type Optimizer interface {
 	// arguments: target node, number of weights, gradient of weight at index,
 	// add to weight at index, learning rate

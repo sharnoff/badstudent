@@ -11,7 +11,7 @@ import (
 	"os"
 )
 
-// used to provide to the constructor (Convolution())
+// ConvArgs is used to provide to the constructor (Convolution())
 // has provided public fields to allow for simplified and more easily readible syntax
 // These fields can be chaned once given to the constructor
 type ConvArgs struct {
