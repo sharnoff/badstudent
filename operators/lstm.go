@@ -1,8 +1,8 @@
 package operators
 
 import (
-	bs "github.com/sharnoff/badstudent"
 	"github.com/pkg/errors"
+	bs "github.com/sharnoff/badstudent"
 )
 
 // LSTM creates a standard LSTM unit, given the Nodes to input to the

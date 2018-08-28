@@ -77,7 +77,7 @@ func (n *Node) writeFile(dirPath string) error {
 	proxy := proxy_Node{
 		Size:     n.Size(),
 		InputsID: nodesToIDs(n.inputs.nodes),
-		Delay: n.Delay(),
+		Delay:    n.Delay(),
 	}
 
 	enc := json.NewEncoder(f)
@@ -91,7 +91,7 @@ func (n *Node) writeFile(dirPath string) error {
 	if !n.IsInput() {
 		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
 			return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
-		}	
+		}
 	}
 
 	return nil
@@ -224,7 +224,7 @@ func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, delay i
 	}
 
 	n.typ = typ
-	
+
 	n.delay = make(chan []float64, delay)
 	n.delayDeltas = make(chan []float64, delay)
 	for i := 0; i < delay; i++ {

@@ -1,12 +1,12 @@
 package operators
 
 import (
-	bs "github.com/sharnoff/badstudent"
 	"github.com/pkg/errors"
+	bs "github.com/sharnoff/badstudent"
 
 	"github.com/sharnoff/badstudent/utils"
-	"runtime"
 	"math"
+	"runtime"
 )
 
 type tanh int8
@@ -57,7 +57,7 @@ func (t tanh) InputDeltas(n *bs.Node, add func(int, float64), start, end int) er
 
 	f := func(i int) {
 		d := 1 - math.Pow(n.Value(i-start), 2)
-		add(i-start, n.Delta(i-start) * d)
+		add(i-start, n.Delta(i-start)*d)
 	}
 
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
