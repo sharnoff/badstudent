@@ -37,7 +37,7 @@ just construct a reference.
 Adding layers to the network is simple, too. `(*Network).Add(…)` is the usual way to add to the architecture of
 the network.
 ```
-(*bs.Network).Add(name string, typ bs.Operator, size, delay int, inputs ...*bs.Node) (*bs.Node, error)
+(*bs.Network).Add(name string, typ bs.Operator, size, delay Delay, inputs ...*bs.Node) (*bs.Node, error)
 ```
 `delay` will usually be zero - it is the number of time-steps in-between a change in inputs and that corresponding
 change in outputs. `Add()` doesn't allow for loops by itself (because inputs must already be initialized), so you
@@ -46,7 +46,7 @@ be replaced later. Nodes created with no given inputs will be used as input node
 were created. Additionally, no Operator should be given for input nodes.
 ```
 (*bs.Network).Placeholder(name string, size int) (*bs.Node, error)
-(*bs.Node).Replace(typ Operator, delay int, inputs ...*bs.Node) (error)
+(*bs.Node).Replace(typ Operator, delay Delay, inputs ...*bs.Node) (error)
 ```
 After the architecture of the network has been completed, simply call `(*Network).SetOutputs(…)` to finish up.
 ```
@@ -61,24 +61,24 @@ import (
 	"github.com/sharnoff/badstudent/operators/optimizers"
 )
 
-l, err := net.Add("inputs", nil, 2, 0)
+l, err := net.Add("inputs", nil, 2, bs.NoDelay)
 if err != nil {
 	panic(err.Error())
 }
 
-if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 3, 0, l); err != nil {
+if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 3, bs.NoDelay, l); err != nil {
 	panic(err.Error())
 }
 
-if l, err = net.Add("hidden layer logistic", operators.Logistic(), 3, 0, l); err != nil {
+if l, err = net.Add("hidden layer logistic", operators.Logistic(), 3, bs.NoDelay, l); err != nil {
 	panic(err.Error())
 }
 
-if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, 0, l) {
+if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, bs.NoDelay, l) {
 	panic(err.Error())
 }
 
-if l, err = net.Add("output logistic", operators.Logistic(), 1, 0, l) {
+if l, err = net.Add("output logistic", operators.Logistic(), 1, bs.NoDelay, l) {
 	panic(err.Error())
 }
 
