@@ -153,7 +153,7 @@ func main() {
 		var err error
 		var l, loop, loopAF *bs.Node
 
-		if l, err = net.Add("input", nil, 2, bs.NoDelay); err != nil {
+		if l, err = net.Add("input", nil, 2); err != nil {
 			panic(err.Error())
 		}
 
@@ -161,27 +161,31 @@ func main() {
 			panic(err.Error())
 		}
 
-		if loopAF, err = net.Add("loop logistic", operators.Logistic(), 1, bs.NoDelay, loop); err != nil {
+		if loopAF, err = net.Add("loop logistic", operators.Logistic(), 1, loop); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 2, bs.NoDelay, l, loopAF); err != nil {
+		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 2, l, loopAF); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 2, bs.NoDelay, l); err != nil {
+		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 2, l); err != nil {
 			panic(err.Error())
 		}
 
-		if err = loop.Replace(operators.Neurons(optimizers.GradientDescent()), 1, l); err != nil {
+		if err = loop.Replace(operators.Neurons(optimizers.GradientDescent()), l); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, bs.NoDelay, l); err != nil {
+		if err = loop.SetDelay(1); err != nil {
 			panic(err.Error())
 		}
 
-		if l, err = net.Add("output logistic", operators.Logistic(), 1, bs.NoDelay, l); err != nil {
+		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, l); err != nil {
+			panic(err.Error())
+		}
+
+		if l, err = net.Add("output logistic", operators.Logistic(), 1, l); err != nil {
 			panic(err.Error())
 		}
 

@@ -14,24 +14,20 @@ func (net *Network) initialize() {
 	net.inputs = new(nodeGroup)
 }
 
-type Delay int
-
-const NoDelay Delay = 0
-
-// Adds a new node to the Network, with given name, size, inputs, and Operator
+// Add adds a new node to the Network, with given name, size, inputs, and Operator
 // If no inputs are given, the node will be one of the input nodes, and its size added to the
 // number of inputs
 //
 // The name of each node must be unique, cannot be "", and cannot contain a double-quote (")
 //
 // if Add returns an error, the host Network will not have been changed
-func (net *Network) Add(name string, typ Operator, size int, delay Delay, inputs ...*Node) (*Node, error) {
+func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*Node, error) {
 	n, err := net.Placeholder(name, size)
 	if err != nil {
 		return n, err
 	}
 
-	if err := n.Replace(typ, delay, inputs...); err != nil {
+	if err := n.Replace(typ, inputs...); err != nil {
 		net.nodesByName[name] = nil
 
 		copy(net.nodesByID[n.id:], net.nodesByID[n.id+1:])
@@ -43,7 +39,7 @@ func (net *Network) Add(name string, typ Operator, size int, delay Delay, inputs
 	return n, nil
 }
 
-// Returns a placeholder Node that can be used as input, later to have its own inputs set
+// Placeholder returns a placeholder Node that can be used as input, later to have its own inputs set
 // This Node must have been replaced before the outputs of the network can be set
 func (net *Network) Placeholder(name string, size int) (*Node, error) {
 	if net == nil {
@@ -79,10 +75,10 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 	return n, nil
 }
 
-// Sets the inputs and Operator of a placeholder Node
+// Replace sets the inputs and Operator of a placeholder Node
 //
 // Network must still be in construction
-func (n *Node) Replace(typ Operator, delay Delay, inputs ...*Node) error {
+func (n *Node) Replace(typ Operator, inputs ...*Node) error {
 	if n.host.stat > initialized {
 		return errors.Errorf("Network has finished construction")
 	} else if !n.IsPlaceholder() {
@@ -91,10 +87,6 @@ func (n *Node) Replace(typ Operator, delay Delay, inputs ...*Node) error {
 		return errors.Errorf("Operator is nil and Node is not an input")
 	} else if typ != nil && len(inputs) == 0 {
 		return errors.Errorf("Operator is not nil, but Node is an input")
-	} else if delay < 0 {
-		return errors.Errorf("Node must have delay of 0 or above")
-	} else if len(inputs) == 0 && delay > 0 {
-		return errors.Errorf("Input nodes cannot have delay (delay = %d)", delay)
 	}
 
 	for i, in := range inputs {
@@ -121,16 +113,8 @@ func (n *Node) Replace(typ Operator, delay Delay, inputs ...*Node) error {
 
 	n.typ = typ
 
-	n.delay = make(chan []float64, delay)
-	n.delayDeltas = make(chan []float64, delay)
-	for i := 0; i < int(delay); i++ {
-		n.delay <- make([]float64, len(n.values))
-		n.delayDeltas <- make([]float64, len(n.values))
-	}
-
-	if delay != 0 {
-		n.host.hasDelay = true
-	}
+	n.delay = make(chan []float64, 0)
+	n.delayDeltas = make(chan []float64, 0)
 
 	if len(inputs) == 0 {
 		n.host.inputs.add(n)

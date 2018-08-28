@@ -1,5 +1,7 @@
 package badstudent
 
+import "github.com/pkg/errors"
+
 // returns the the Name of the Node, surrounded by double quotes
 func (n *Node) String() string {
 	return "\"" + n.name + "\""
@@ -17,6 +19,51 @@ func (n *Node) IsInput() bool {
 // Returns whether or not the Node is an output node
 func (n *Node) IsOutput() bool {
 	return n.placeInOutputs >= 0
+}
+
+// SetDelay sets the amount of delay in the Node
+//
+// Constraints:
+//
+// The delay cannot be set after the network structure has been finalized
+// by SetOutputs.
+// Input Nodes cannot have delay because their values are set directly.
+// Placeholder Nodes cannot have their delay set because their inputs are
+// not yet known.
+func (n *Node) SetDelay(delay int) error {
+	if delay == n.Delay() {
+		return nil
+	}
+
+	if n.host.stat >= finalized {
+		return errors.Errorf("Network structure has already been finalized, cannot update Node delay")
+	} else if n.IsPlaceholder() {
+		return errors.Errorf("Node must no longer be a placeholder to set delay")
+	} else if n.NumInputs() == 0 && delay > 0 {
+		return errors.Errorf("Input nodes cannot have delay (delay = %d)", delay)
+	}
+
+	n.delay = make(chan []float64, delay)
+	n.delayDeltas = make(chan []float64, delay)
+	for i := 0; i < delay; i++ {
+		n.delay <- make([]float64, len(n.values))
+		n.delayDeltas <- make([]float64, len(n.values))
+	}
+
+	if delay != 0 {
+		n.host.hasDelay = true
+	} else {
+		// update whether or not the network has delay
+		n.host.hasDelay = false
+		for _, t := range n.host.nodesByID {
+			if t.HasDelay() {
+				n.host.hasDelay = true
+				break
+			}
+		}
+	}
+
+	return nil
 }
 
 func (n *Node) Delay() int {
@@ -49,7 +96,7 @@ func (n *Node) Value(index int) float64 {
 	}
 
 	return n.typ.Value(n, index)
-}
+	}
 
 // returns the value of the input to the Node at that index
 //

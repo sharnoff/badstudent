@@ -52,38 +52,44 @@ func LSTM(net *bs.Network, size int, namePrefix string, forget, update, ignore, 
 	}
 	cellDelay = csLoop
 
-	fGate, err = net.Add(namePrefix+"forget gate", Mult(), size, bs.NoDelay, csLoop, forget)
+	fGate, err = net.Add(namePrefix+"forget gate", Mult(), size, csLoop, forget)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to add forget gate\n")
 		return
 	}
 
-	iGate, err = net.Add(namePrefix+"ignore gate", Mult(), size, bs.NoDelay, update, ignore)
+	iGate, err = net.Add(namePrefix+"ignore gate", Mult(), size, update, ignore)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to add ignore gate\n")
 		return
 	}
 
-	cs, err = net.Add(namePrefix+"cell-state", Add(), size, bs.NoDelay, fGate, iGate)
+	cs, err = net.Add(namePrefix+"cell-state", Add(), size, fGate, iGate)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to add cell-state\n")
 		return
 	}
 	cell = cs
 
-	err = csLoop.Replace(Identity(), bs.Delay(1), cs)
+	err = csLoop.Replace(Identity(), cs)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to replace cell-state loop\n")
 		return
 	}
 
-	cs, err = net.Add(namePrefix+"cell-state tanh", Tanh(), size, bs.NoDelay, cs)
+	err = csLoop.SetDelay(1)
+	if err != nil { // This error should never appear
+		err = errors.Wrapf(err, "Failed to set delay of cell-state loop\n")
+		return
+	}
+
+	cs, err = net.Add(namePrefix+"cell-state tanh", Tanh(), size, cs)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to add cell-state activation (tanh)\n")
 		return
 	}
 
-	sGate, err = net.Add(namePrefix+"select gate", Mult(), size, bs.NoDelay, cs, sel)
+	sGate, err = net.Add(namePrefix+"select gate", Mult(), size, cs, sel)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed to add select gate\n")
 		return
