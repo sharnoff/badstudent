@@ -1,7 +1,5 @@
 package badstudent
 
-import ()
-
 // returns the the Name of the Node, surrounded by double quotes
 func (n *Node) String() string {
 	return "\"" + n.name + "\""

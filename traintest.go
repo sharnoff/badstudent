@@ -155,7 +155,7 @@ func (net *Network) Train(args TrainArgs) {
 			args.Results = make(chan Result)
 
 			go func() {
-				for _ = range args.Results {
+				for range args.Results {
 				}
 			}()
 		}

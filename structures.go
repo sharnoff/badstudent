@@ -1,7 +1,5 @@
 package badstudent
 
-import ()
-
 // The main structure that is used to learn to map input to output functions.
 // A Network is more of a containing structure than it is actual storage of
 // information.
