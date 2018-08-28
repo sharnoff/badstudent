@@ -30,12 +30,12 @@ func (t add) Init(n *bs.Node) error {
 }
 
 // does not save anything
-func (t add) Save(n *bs.Node) error {
+func (t add) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
 // does not save anything
-func (t add) Load(n *bs.Node) error {
+func (t add) Load(n *bs.Node, dirPath string, aux []interface{}) error {
 	return nil
 }
 

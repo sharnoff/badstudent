@@ -18,7 +18,7 @@ func Tanh() tanh {
 }
 
 func (t tanh) Init(n *bs.Node) error {
-	if n.Size != n.NumInputs() {
+	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize tanh operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
 
@@ -63,7 +63,7 @@ func (t tanh) InputDeltas(n *bs.Node, add func(int, float64), start, end int) er
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
 	threadsPerCPU := 1
 
-	utils.MultiThread(start, end f, opsPerThread, threadsperCPU)
+	utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
 
 	return nil
 }

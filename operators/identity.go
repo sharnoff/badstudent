@@ -18,7 +18,7 @@ func Identity() identity {
 }
 
 func (t identity) Init(n *bs.Node) error {
-	if n.Size != n.NumInputs() {
+	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize identity operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
 	}
 
@@ -61,7 +61,7 @@ func (t identity) InputDeltas(n *bs.Node, add func(int, float64), start, end int
 	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
 	threadsPerCPU := 1
 
-	utils.MultiThread(start, end f, opsPerThread, threadsperCPU)
+	utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
 
 	return nil
 }
