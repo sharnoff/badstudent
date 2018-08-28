@@ -85,10 +85,6 @@ type Node struct {
 	// whether or not the deltas of the node will actually be calculated
 	deltasMatter bool
 
-	// whether or not the values of the node will be stored here
-	// (instead of just being passed on)
-	keepsValues bool
-
 	// The set of Nodes that the given Node takes input from
 	inputs *nodeGroup
 
