@@ -35,7 +35,7 @@ const (
 
 type dataset struct {
 	inputs  [][]uint8
-	outputs []int // one-hot encoding = true
+	outputs []int // one-hot encoding = false
 
 	index int
 }
