@@ -51,10 +51,6 @@ func LSTM(net *bs.Network, size int, namePrefix string, forget, update, ignore, 
 		return
 	}
 	cellDelay = csLoop
-	if err = csLoop.SetDelay(1); err != nil {
-		err = errors.Wrapf(err, "Failed to set delay of cell-state loop\n")
-		return
-	}
 
 	fGate, err = net.Add(namePrefix+"forget gate", Mult(), size, csLoop, forget)
 	if err != nil {
