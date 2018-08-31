@@ -79,35 +79,40 @@ func (net *Network) finalize() error {
 		net.resetCompletion()
 	}
 
-	// Check that there are no loops with zero delay
+	// Check that there are no loops with zero delay, from each Node to itself
 	if net.mayHaveLoop {
-		var check func(*Node, int) error
+		var check func(*Node) error
 
 		for _, root := range net.nodesByID {
-			if root.IsInput() {
+			if num(root.inputs) == 0 {
+				// this node can't recieve itself as input (directly or indirectly)
+				// if it has no inputs
+				continue
+			} else if num(root.outputs) == 0 {
+				// this node can't output to itself if it has no outputs 
+				continue
+			} else if root.Delay() != 0 {
+				// This node outputs to everything with delay, so it cannot
+				// output to itself with none
 				continue
 			}
 
-			delays := make(map[*Node]int)
-
-			check = func(n *Node, depth int) error {
-				if n.completed && depth >= delays[n] {
+			check = func(n *Node) error {
+				if n.completed {
+					return nil
+				} else if n.Delay() != 0 {
+					// cannot be part of a 0-delay loop
 					return nil
 				}
 
 				if n == root {
-					if depth == 0 {
-						return errors.Errorf("Node %v receives input from itself with no delay", root)
-					}
-
-					return nil
+					return errors.Errorf("Node %v receives input from itself with no delay", root)
 				} else {
-					delays[n] = depth
 					n.completed = true
 
 					for _, out := range n.outputs.nodes {
-						if err := check(out, depth+n.Delay()); err != nil {
-							return err
+						if err := check(out); err != nil {
+							return errors.Wrapf(err, "%v to", n)
 						}
 					}
 
@@ -116,7 +121,9 @@ func (net *Network) finalize() error {
 			}
 
 			for _, out := range root.outputs.nodes {
-				check(out, root.Delay())
+				if err := check(out); err != nil {
+					return err
+				}
 			}
 
 			net.resetCompletion()
@@ -166,7 +173,6 @@ func (n *Node) setValues(values []float64) {
 
 // A full diagram of the operational flow of evaluate() and getDeltas() is available upon request
 func (n *Node) evaluate() error {
-
 	if n.completed {
 		return nil
 	} else if n.IsInput() {
@@ -241,6 +247,7 @@ func (net *Network) evaluate(recurrent bool) error {
 
 	net.resetCompletion()
 	net.stat = evaluated
+
 	return nil
 }
 
