@@ -239,7 +239,6 @@ func test(net *bs.Network, data *dataset) {
 
 func save(net *bs.Network) {
 	fmt.Println("Saving...")
-	path := "xor save"
 	if err := net.Save(path, true); err != nil {
 		panic(err.Error())
 	}
