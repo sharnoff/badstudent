@@ -382,8 +382,15 @@ func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learni
 			return errors.Wrapf(err, "Failed to evaluate network to use targets %d\n", i)
 		}
 
-		cfDeriv := func(start, end int, add func(int, float64)) error {
-			return cf.Deriv(net.outputs.getValues(false), targets[i], start, end, add)
+		var cfDeriv func(int, int, func(int, float64)) error
+		if targets[i] != nil {
+			cfDeriv = func(start, end int, add func(int, float64)) error {
+				return cf.Deriv(net.outputs.getValues(false), targets[i], start, end, add)
+			}
+		} else {
+			cfDeriv = func(start, end int, add func(int, float64)) error {
+				return nil
+			}
 		}
 
 		// bypass getDeltas

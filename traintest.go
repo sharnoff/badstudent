@@ -37,14 +37,21 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 	return
 }
 
-// The simple package used to send training samples to the Network
+// Datum is the simple package used to send training samples to the Network
 type Datum struct {
+	// Inputs is the input of the network. It must have the same size as
+	// that of the network's inputs.
 	Inputs  []float64
+	
+	// Outputs is the expected output of the network, given the input.
+	//
+	// Providing nil (or length 0) can be used to signify that the outputs
+	// are not significant. This can only be used for recurrent models.
 	Outputs []float64
 }
 
 func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == net.InputSize() && len(d.Outputs) == net.OutputSize()
+	return len(d.Inputs) == net.InputSize() && (len(d.Outputs) == 0 || len(d.Outputs) == net.OutputSize())
 }
 
 // The primary method of supplying data to the network -- for training OR testing
@@ -221,7 +228,7 @@ func (net *Network) Train(args TrainArgs) {
 	var targets [][]float64
 	var learningRates []float64
 
-	var betweenSets bool = true
+	var betweenSequences bool = true
 
 	// for run condition (actually slightly farther down)
 	for {
@@ -241,7 +248,7 @@ func (net *Network) Train(args TrainArgs) {
 		}
 
 		if args.ShouldTest(iteration) {
-			if net.hasDelay && !betweenSets {
+			if net.hasDelay && !betweenSequences {
 				*args.Err = errors.Errorf("Testing for recurrent networks must be done between sets")
 				return
 			}
@@ -264,7 +271,7 @@ func (net *Network) Train(args TrainArgs) {
 			break
 		}
 
-		betweenSets = false
+		betweenSequences = false
 
 		d, err := args.TrainData.Get()
 		if err != nil {
@@ -272,6 +279,9 @@ func (net *Network) Train(args TrainArgs) {
 			return
 		} else if !d.fits(net) {
 			*args.Err = errors.Errorf("Training data received for iteration %d does not fit Network", iteration)
+			return
+		} else if len(d.Outputs) == 0 && !net.hasDelay {
+			*args.Err = errors.Errorf("Training data provided for iteration %d has marked outputs as insignificant though network is not recurrent", iteration)
 			return
 		}
 
@@ -281,12 +291,18 @@ func (net *Network) Train(args TrainArgs) {
 			return
 		}
 
-		cost, err := args.CostFunc.Cost(outs, d.Outputs)
-		if err != nil {
-			*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
+		var cost float64
+		if len(d.Outputs) != 0 {
+			cost, err = args.CostFunc.Cost(outs, d.Outputs)
+			if err != nil {
+				*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
+			}
 		}
 
-		correct := args.IsCorrect(outs, d.Outputs)
+		var correct bool
+		if len(d.Outputs) > 0 {
+			correct = args.IsCorrect(outs, d.Outputs)
+		}
 		batch := args.TrainData.BatchEnded()
 
 		α := args.LearningRate(iteration, lastCost)
@@ -319,7 +335,7 @@ func (net *Network) Train(args TrainArgs) {
 
 				targets = nil
 				learningRates = nil
-				betweenSets = true
+				betweenSequences = true
 			} else if batch { // but not set ended
 				*args.Err = errors.Errorf("Batching for recurrent models must align with sets")
 				return
@@ -330,7 +346,9 @@ func (net *Network) Train(args TrainArgs) {
 		if correct {
 			statusCorrect += 1.0
 		}
-		statusSize++
+		if len(d.Outputs) > 0 {
+			statusSize++
+		}
 
 		lastCost = cost
 		iteration++
