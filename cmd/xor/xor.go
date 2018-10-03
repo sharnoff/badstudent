@@ -3,7 +3,7 @@ package main
 import (
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/operators"
-	"github.com/sharnoff/badstudent/operators/optimizers"
+	"github.com/sharnoff/badstudent/optimizers"
 
 	"fmt"
 	"time"

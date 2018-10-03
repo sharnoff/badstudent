@@ -7,6 +7,36 @@ import (
 	"strconv"
 )
 
+var ops map[string]func() Operator
+var opts map[string]func() Optimizer
+
+func init() {
+	ops = make(map[string]func() Operator)
+	opts = make(map[string]func() Optimizer)
+}
+
+// RegisterOperator updates internals so that Load() will recognize the
+// Operator. Returns error if `name` is already present.
+func RegisterOperator(name string, f func() Operator) error {
+	if _, ok := ops[name]; ok {
+		return errors.Errorf("Name %s has already been registered", name)
+	}
+
+	ops[name] = f
+	return nil
+}
+
+// RegisterOptimizer updates internals so that Load() will recognize the
+// Optimizer. Returns error if `name` is already present.
+func RegisterOptimizer(name string, f func() Optimizer) error {
+	if _, ok := opts[name]; ok {
+		return errors.Errorf("Name %s has already been registered", name)
+	}
+
+	opts[name] = f
+	return nil
+}
+
 type proxy_Network struct {
 	// the IDs of each of the Nodes in the outputs
 	OutputsID []int

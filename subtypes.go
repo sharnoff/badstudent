@@ -1,10 +1,6 @@
 package badstudent
 
-// in addition to these functions,
-// each operator should be able to provide a way to deserialize its stored data,
-// should the network need to be loaded from file
-// the signature should be: func(*Node, *os.File) Operator
-// for more information, see Load()
+// Operator is an interface for defining layers and activation functions
 type Operator interface {
 	// should initialize any weights if used, and return the number of output values from the operation
 	// Init() will always be run on an operator before any other method
@@ -79,3 +75,18 @@ type Operator interface {
 	// may be called without any changes waiting to happen
 	AddWeights(*Node) error
 }
+
+// Optimizer is an interface
+type Optimizer interface {
+	// Run is called to suggest changes to each weight, given:
+	// number of weights, gradient at weight, function to add to weights,
+	// and a learning-rate
+	Run(*Node, int, func(int) float64, func(int, float64), float64) error
+
+	Save(*Node, string) error
+	Load(*Node, string, []interface{}) error
+}
+
+// Initializer dictates how the weights in an Operator will be set, given
+// a blank slice to hold weights
+type Initializer func(*Node, []float64)

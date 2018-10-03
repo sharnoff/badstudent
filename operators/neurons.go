@@ -12,7 +12,7 @@ import (
 )
 
 type neurons struct {
-	opt Optimizer
+	opt bs.Optimizer
 
 	Weights [][]float64
 	Biases  []float64
@@ -22,7 +22,7 @@ type neurons struct {
 }
 
 // Neurons returns a basic layer of perceptrons with biases
-func Neurons(opt Optimizer) *neurons {
+func Neurons(opt bs.Optimizer) *neurons {
 	n := new(neurons)
 	n.opt = opt
 	return n
@@ -85,7 +85,7 @@ func (n *neurons) Save(nd *bs.Node, dirPath string) error {
 		f.Close()
 	}
 
-	if err = n.opt.Save(nd, n, dirPath+"/opt"); err != nil {
+	if err = n.opt.Save(nd, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -126,7 +126,7 @@ func (n *neurons) Load(nd *bs.Node, dirPath string, aux []interface{}) error {
 		}
 	}
 
-	if err = n.opt.Load(nd, n, dirPath+"/opt", aux); err != nil {
+	if err = n.opt.Load(nd, dirPath+"/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 

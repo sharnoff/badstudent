@@ -68,7 +68,7 @@ type ConvArgs struct {
 }
 
 type convolution struct {
-	opt Optimizer
+	opt bs.Optimizer
 
 	Outs   *utils.MultiDim
 	Ins    *utils.MultiDim // plural of 'in'
@@ -96,7 +96,7 @@ const zeroPadding_value float64 = 0
 // does not check for possible errors yet -- that is done with Init()
 //
 // can be supplied 'nil' if used for Load()
-func Convolution(conv *ConvArgs, opt Optimizer) *convolution {
+func Convolution(conv *ConvArgs, opt bs.Optimizer) *convolution {
 	c := new(convolution)
 	c.opt = opt
 
@@ -274,7 +274,7 @@ func (c *convolution) Save(n *bs.Node, dirPath string) error {
 		f.Close()
 	}
 
-	if err = c.opt.Save(n, c, dirPath+"/opt"); err != nil {
+	if err = c.opt.Save(n, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
 	}
 
@@ -306,7 +306,7 @@ func (c *convolution) Load(n *bs.Node, dirPath string, aux []interface{}) error 
 		f.Close()
 	}
 
-	if err = c.opt.Load(n, c, dirPath+"/opt", aux); err != nil {
+	if err = c.opt.Load(n, dirPath+"/opt", aux); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
