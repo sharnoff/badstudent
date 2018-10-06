@@ -10,6 +10,11 @@ type Operator interface {
 	// Init(l *Node) (int, error)
 	Init(*Node) error
 
+	// TypeString returns the string corresponding to the type of the Operator.
+	// For example: the Operator "Identity" should return "identity", or something
+	// to that effect.
+	TypeString() string
+
 	// given a path to a directory (and the name of it, without a '/' at the end)
 	// should store enough information to recreate the Operator from file, should
 	// the need arise
@@ -24,7 +29,7 @@ type Operator interface {
 	// same stage as Init() in its construction
 	//
 	// the directory will not be created, used, or altered by the library itself
-	Load(*Node, string, []interface{}) error
+	Load(*Node, string) error
 
 	// Should update the values of the node to reflect the inputs and weights (if any)
 	// arguments: given node, source slice for the values of that node
@@ -83,8 +88,13 @@ type Optimizer interface {
 	// and a learning-rate
 	Run(*Node, int, func(int) float64, func(int, float64), float64) error
 
+	// TypeString returns the string corresponding to the type of the Optimizer.
+	// For example: the Optimizer "Adam" should return "adam", or something
+	// to that effect.
+	TypeString() string
+
 	Save(*Node, string) error
-	Load(*Node, string, []interface{}) error
+	Load(*Node, string) error
 }
 
 // Initializer dictates how the weights in an Operator will be set, given

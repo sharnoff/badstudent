@@ -22,6 +22,10 @@ func Logistic() logistic {
 	return logistic(0)
 }
 
+func (t logistic) TypeString() string {
+	return "logistic"
+}
+
 func (t logistic) Init(n *bs.Node) error {
 	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize logistic Operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
@@ -34,7 +38,7 @@ func (t logistic) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t logistic) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (t logistic) Load(n *bs.Node, dirPath string) error {
 	return nil
 }
 

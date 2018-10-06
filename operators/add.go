@@ -15,6 +15,10 @@ func Add() add {
 	return add(0)
 }
 
+func (t add) TypeString() string {
+	return "add"
+}
+
 func (t add) Init(n *bs.Node) error {
 	if n.NumInputs() == 0 {
 		return errors.Errorf("Must have >= 1 input")
@@ -35,7 +39,7 @@ func (t add) Save(n *bs.Node, dirPath string) error {
 }
 
 // does not save anything
-func (t add) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (t add) Load(n *bs.Node, dirPath string) error {
 	return nil
 }
 

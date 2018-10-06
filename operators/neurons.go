@@ -9,6 +9,8 @@ import (
 
 	"encoding/json"
 	"os"
+
+	"fmt"
 )
 
 type neurons struct {
@@ -30,10 +32,19 @@ func Neurons(opt bs.Optimizer) *neurons {
 
 const bias_value float64 = 1
 
+func (n *neurons) TypeString() string {
+	return "neurons"
+}
+
 func (n *neurons) Init(nd *bs.Node) error {
 
 	if nd.NumInputs() == 0 {
 		return errors.Errorf("Neurons must have inputs (NumInputs() == %d)", nd.NumInputs())
+	}
+
+	// if it's been loaded from a file, don't do anything
+	if len(n.Weights) != 0 {
+		return nil
 	}
 
 	n.Weights = make([][]float64, nd.Size())
@@ -93,10 +104,11 @@ func (n *neurons) Save(nd *bs.Node, dirPath string) error {
 }
 
 // decodes JSON from 'weights.txt'
-func (n *neurons) Load(nd *bs.Node, dirPath string, aux []interface{}) error {
+func (n *neurons) Load(nd *bs.Node, dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
+		fmt.Println(dirPath, "+", "/weights.txt")
 		return errors.Errorf("Couldn't load operator: could not open file 'weights.txt'")
 	}
 
@@ -118,15 +130,9 @@ func (n *neurons) Load(nd *bs.Node, dirPath string, aux []interface{}) error {
 		if nd.Size() != len(n.Weights) || nd.Size() != len(n.Biases) {
 			return errors.Errorf("Couldn't load operator: !(nd.Size() == len(weights) == len(biases)) (%d, %d, %d)", nd.Size(), len(n.Weights), len(n.Biases))
 		}
-		numInputs := nd.NumInputs()
-		for i := range n.Weights {
-			if numInputs != len(n.Weights[i]) {
-				return errors.Errorf("Couldn't load operator: nd.NumInputs() != len(weights[%d]) (%d != %d)", i, numInputs, len(n.Weights[i]))
-			}
-		}
 	}
 
-	if err = n.opt.Load(nd, dirPath+"/opt", aux); err != nil {
+	if err = n.opt.Load(nd, dirPath+"/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 

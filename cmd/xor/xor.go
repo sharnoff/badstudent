@@ -118,20 +118,8 @@ func save(net *bs.Network) {
 }
 
 func load() (net *bs.Network) {
-
-	fmt.Println("Loading...")
-	path := "xor save"
-	types := map[string]bs.Operator{
-		"hidden layer neurons":  operators.Neurons(optimizers.GradientDescent()),
-		"loop":                  operators.Neurons(optimizers.GradientDescent()),
-		"loop logistic":         operators.Logistic(),
-		"hidden layer logistic": operators.Logistic(),
-		"output neurons":        operators.Neurons(optimizers.GradientDescent()),
-		"output logistic":       operators.Logistic(),
-	}
-	// no auxiliary information necessary
 	var err error
-	if net, err = bs.Load(path, types, nil); err != nil {
+	if net, err = bs.Load(path); err != nil {
 		panic(err.Error())
 	}
 	fmt.Println("Done!")
@@ -199,7 +187,7 @@ func main() {
 	test(net, dataset)
 	save(net)
 	net = load()
-	train(net, dataset)
+	// train(net, dataset)
 	test(net, dataset)
 	save(net)
 

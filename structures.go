@@ -6,8 +6,7 @@ package badstudent
 type Network struct {
 	inputs, outputs *nodeGroup
 
-	nodesByID   []*Node
-	nodesByName map[string]*Node
+	nodesByID []*Node
 
 	// Whether or not there is the possibility of there being a loop in the
 	// passage of values from Node to Node

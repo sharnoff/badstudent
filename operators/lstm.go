@@ -18,16 +18,7 @@ import (
 // To add peep-holes, simply use cell and cellDelay as inputs to the rest
 // of the network where fitting.
 //
-// Loading:
-//
-// For loading, the operators for each name are:
-// * namePrefix + "cell-state loop": Identity()
-// * namePrefix + "forget gate": Mult()
-// * namePrefix + "ignore gate": Mult()
-// * namePrefix + "cell-state": Add()
-// * namePrefix + "cell-state tanh": Tanh()
-//
-// Structure:
+// Structure (for the curious):
 //
 // 'X' signifies an element-wise multiplication; Mult();
 // '+' signifies an element-wise addition; Add();

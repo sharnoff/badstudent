@@ -17,6 +17,10 @@ func Identity() identity {
 	return identity(0)
 }
 
+func (t identity) TypeString() string {
+	return "identity"
+}
+
 func (t identity) Init(n *bs.Node) error {
 	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize identity operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
@@ -29,7 +33,7 @@ func (t identity) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t identity) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (t identity) Load(n *bs.Node, dirPath string) error {
 	return nil
 }
 

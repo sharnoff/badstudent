@@ -40,13 +40,15 @@ func RegisterOptimizer(name string, f func() Optimizer) error {
 type proxy_Network struct {
 	// the IDs of each of the Nodes in the outputs
 	OutputsID []int
-	NamesByID []string
+	NumNodes  int
 }
 
 type proxy_Node struct {
-	Size     int
-	InputsID []int
-	Delay    int
+	Size       int
+	Name       string
+	TypeString string
+	InputsID   []int
+	Delay      int
 }
 
 func nodesToIDs(nodes []*Node) []int {
@@ -65,8 +67,11 @@ func idsToNodes(nodesByID []*Node, ids []int) []*Node {
 	return nodes
 }
 
-// referred to in error messages as "overview"
-const main_file string = "main.net"
+const (
+	main_file string = "main.net"
+	op_ext    string = "op"
+	opt_ext   string = "opt"
+)
 
 func (net *Network) writeFile(dirPath string) error {
 	f, err := os.Create(dirPath + "/" + main_file)
@@ -81,11 +86,7 @@ func (net *Network) writeFile(dirPath string) error {
 	{
 		proxy = proxy_Network{
 			OutputsID: nodesToIDs(net.outputs.nodes),
-		}
-
-		proxy.NamesByID = make([]string, len(net.nodesByID))
-		for i := range net.nodesByID {
-			proxy.NamesByID[i] = net.nodesByID[i].name
+			NumNodes:  len(net.nodesByID),
 		}
 	}
 
@@ -103,11 +104,18 @@ func (n *Node) writeFile(dirPath string) error {
 		return errors.Wrapf(err, "Failed to create a save file for Node %v (file %q in %s)\n", n, strconv.Itoa(n.id)+".node", dirPath)
 	}
 
+	var ts string
+	if !n.IsInput() {
+		ts = n.typ.TypeString()
+	}
+
 	// convert the node to a format that can be written
 	proxy := proxy_Node{
-		Size:     n.Size(),
-		InputsID: nodesToIDs(n.inputs.nodes),
-		Delay:    n.Delay(),
+		Size:       n.Size(),
+		Name:       n.Name(),
+		TypeString: ts,
+		InputsID:   nodesToIDs(n.inputs.nodes),
+		Delay:      n.Delay(),
 	}
 
 	enc := json.NewEncoder(f)
@@ -118,8 +126,9 @@ func (n *Node) writeFile(dirPath string) error {
 
 	f.Close()
 
+	// if n is an input, it won't have an operator
 	if !n.IsInput() {
-		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)); err != nil {
+		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)+"/"+op_ext); err != nil {
 			return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
 		}
 	}
@@ -167,7 +176,7 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 // necessary to reconstruct that Operator (aux)
 //
 // aux will be provided to Operator.Load()
-func Load(dirPath string, types map[string]Operator, aux map[string][]interface{}) (*Network, error) {
+func Load(dirPath string) (*Network, error) {
 	// check if the folder exists
 	if _, err := os.Stat(dirPath); err != nil {
 		return nil, errors.Errorf("Containing directory does not exist")
@@ -188,44 +197,57 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	}
 
 	net := new(Network)
-	net.nodesByName = make(map[string]*Node)
-	net.inputs = new(nodeGroup)
 
-	inputsPerNodeID := make([][]int, len(net_proxy.NamesByID))
-	delays := make([]int, len(net_proxy.NamesByID))
+	typs := make([]Operator, net_proxy.NumNodes)
+	ins := make([][]int, net_proxy.NumNodes)
+	delays := make([]int, net_proxy.NumNodes)
 
-	for id := 0; id < len(net_proxy.NamesByID); id++ {
-		name := net_proxy.NamesByID[id]
+	for id := 0; id < net_proxy.NumNodes; id++ {
 
 		f, err := os.Open(dirPath + "/" + strconv.Itoa(id) + ".node")
 		if err != nil {
-			return nil, errors.Wrapf(err, "File for node %q (id %d) does not exist\n", name, id)
+			return nil, errors.Wrapf(err, "File for node #%d does not exist\n", id)
 		}
 
-		node_proxy := new(proxy_Node)
+		// proxy node
+		pn := new(proxy_Node)
 		{
 			dec := json.NewDecoder(f)
-			if err := dec.Decode(node_proxy); err != nil {
-				return nil, errors.Wrapf(err, "Error encountered while decoding file for Node %q (id %d)\n", name, id)
-			}
+			err = dec.Decode(pn)
 			f.Close()
+			if err != nil {
+				return nil, errors.Wrapf(err, "Error encountered while decoding file for Node %q (id %d)\n", pn.Name, id)
+			}
 		}
 
-		inputsPerNodeID[id] = node_proxy.InputsID
-		delays[id] = node_proxy.Delay
-		if _, err := net.Placeholder(name, node_proxy.Size); err != nil {
-			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", name, id)
+		justAdded, err := net.Placeholder(pn.Name, pn.Size)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to add placeholder Node %q (id %d) to reconstructing Network\n", pn.Name, id)
+		}
+
+		ins[id] = pn.InputsID
+		delays[id] = pn.Delay
+
+		if len(ins[id]) != 0 {
+			t, ok := ops[pn.TypeString]
+			if !ok {
+				return nil, errors.Errorf("Unknown operator %q has not been registered", pn.TypeString)
+			}
+
+			typs[id] = t()
+			if err = typs[id].Load(justAdded, dirPath + "/" + strconv.Itoa(id) + "/" + op_ext); err != nil {
+				return nil, errors.Wrapf(err, "Failed to load Operator for Node %q (id %d)\n", pn.Name, id)
+			}
 		}
 	}
 
 	for id, n := range net.nodesByID {
-		if types[n.name] == nil && len(inputsPerNodeID[id]) != 0 {
-			return nil, errors.Errorf("No Operator given for non-input Node %v (id %d)", n, id)
-		}
+		inputs := idsToNodes(net.nodesByID, ins[id])
 
-		err = n.loadReplace(types[n.name], aux[n.name], dirPath+"/"+strconv.Itoa(id), delays[id], idsToNodes(net.nodesByID, inputsPerNodeID[id]))
-		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to add Node %q (id %d) to reconstructing Network\n", n.name, id)
+		n.Replace(typs[id], inputs...)
+
+		if delays[id] != 0 {
+			n.SetDelay(delays[id])
 		}
 	}
 
@@ -235,44 +257,4 @@ func Load(dirPath string, types map[string]Operator, aux map[string][]interface{
 	}
 
 	return net, nil
-}
-
-func (n *Node) loadReplace(typ Operator, aux []interface{}, path string, delay int, inputs []*Node) error {
-	for _, in := range inputs {
-		if in.id > n.id {
-			n.host.mayHaveLoop = true
-		}
-	}
-
-	n.inputs = new(nodeGroup)
-	n.inputs.add(inputs...)
-
-	if !n.IsInput() {
-		if err := typ.Load(n, path, aux); err != nil {
-			return errors.Wrapf(err, "Initializing Operator failed\n", n)
-		}
-	}
-
-	n.typ = typ
-
-	n.delay = make(chan []float64, delay)
-	n.delayDeltas = make(chan []float64, delay)
-	for i := 0; i < delay; i++ {
-		n.delay <- make([]float64, len(n.values))
-		n.delayDeltas <- make([]float64, len(n.values))
-	}
-
-	if delay != 0 {
-		n.host.hasDelay = true
-	}
-
-	if len(inputs) == 0 {
-		n.host.inputs.add(n)
-	}
-
-	for _, in := range inputs {
-		in.outputs.add(n)
-	}
-
-	return nil
 }

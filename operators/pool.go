@@ -84,6 +84,10 @@ func MaxPool(args *PoolArgs) *maxPool {
 // AvgPool:
 // ***************************************************
 
+func (a *avgPool) TypeString() string {
+	return "avg-pool"
+}
+
 func (a *avgPool) Init(n *bs.Node) error {
 
 	numDims := len(a.Outs.Dims)
@@ -191,7 +195,7 @@ func (a *avgPool) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (a *avgPool) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (a *avgPool) Load(n *bs.Node, dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -363,6 +367,10 @@ func (a *avgPool) AddWeights(n *bs.Node) error {
 // MaxPool:
 // ***************************************************
 
+func (mp *maxPool) TypeString() string {
+	return "max-pool"
+}
+
 func (mp *maxPool) Init(n *bs.Node) error {
 
 	numDims := len(mp.Outs.Dims)
@@ -470,7 +478,7 @@ func (mp *maxPool) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (mp *maxPool) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (mp *maxPool) Load(n *bs.Node, dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {

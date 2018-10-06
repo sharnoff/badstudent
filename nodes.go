@@ -4,7 +4,11 @@ import "github.com/pkg/errors"
 
 // returns the the Name of the Node, surrounded by double quotes
 func (n *Node) String() string {
-	return "\"" + n.name + "\""
+	if n.name != "" {
+		return "\"" + n.name + "\""
+	}
+
+	return "<no name; type: " + n.typ.TypeString() + ">"
 }
 
 func (n *Node) Name() string {

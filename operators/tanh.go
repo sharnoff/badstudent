@@ -17,6 +17,10 @@ func Tanh() tanh {
 	return tanh(0)
 }
 
+func (t tanh) TypeString() string {
+	return "tahn"
+}
+
 func (t tanh) Init(n *bs.Node) error {
 	if n.Size() != n.NumInputs() {
 		return errors.Errorf("Can't initialize tanh operator, does not have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
@@ -29,7 +33,7 @@ func (t tanh) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t tanh) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (t tanh) Load(n *bs.Node, dirPath string) error {
 	return nil
 }
 

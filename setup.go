@@ -2,15 +2,13 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	"strings"
 )
 
 func (net *Network) initialize() {
-	if net.nodesByName != nil {
+	if net.inputs != nil {
 		return
 	}
 
-	net.nodesByName = make(map[string]*Node)
 	net.inputs = new(nodeGroup)
 }
 
@@ -28,8 +26,6 @@ func (net *Network) Add(name string, typ Operator, size int, inputs ...*Node) (*
 	}
 
 	if err := n.Replace(typ, inputs...); err != nil {
-		net.nodesByName[name] = nil
-
 		copy(net.nodesByID[n.id:], net.nodesByID[n.id+1:])
 		net.nodesByID = net.nodesByID[:len(net.nodesByID)-1]
 
@@ -50,12 +46,8 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 
 	if size < 1 {
 		return nil, errors.Errorf("Node must have size >= 1 (%d)", size)
-	} else if net.nodesByName[name] != nil {
-		return nil, errors.Errorf("Name %q is already taken", name)
 	} else if name == "" {
 		return nil, errors.Errorf(`Name cannot be ""`)
-	} else if strings.Contains(name, `"`) {
-		return nil, errors.Errorf(`Name contains illegal character:"`)
 	}
 
 	n := new(Node)
@@ -69,7 +61,6 @@ func (net *Network) Placeholder(name string, size int) (*Node, error) {
 	n.values = make([]float64, size)
 	n.deltas = make([]float64, size)
 
-	net.nodesByName[name] = n
 	net.nodesByID = append(net.nodesByID, n)
 
 	return n, nil

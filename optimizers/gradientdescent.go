@@ -14,6 +14,10 @@ func GradientDescent() gradientdescent {
 	return gradientdescent(0)
 }
 
+func (g gradientdescent) TypeString() string {
+	return "SGD"
+}
+
 func (g gradientdescent) Run(n *bs.Node, size int, grad func(int) float64, add func(int, float64), learningRate float64) error {
 
 	threadsPerCPU := 1
@@ -32,6 +36,6 @@ func (g gradientdescent) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (g gradientdescent) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (g gradientdescent) Load(n *bs.Node, dirPath string) error {
 	return nil
 }

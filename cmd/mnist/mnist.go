@@ -247,16 +247,8 @@ func save(net *bs.Network) {
 
 func load() (net *bs.Network) {
 	fmt.Println("Loading...")
-	types := map[string]bs.Operator{
-		"conv-1":          operators.Convolution(nil, optimizers.GradientDescent()),
-		"pool-1":          operators.AvgPool(nil),
-		"pool-1 logistic": operators.Logistic(),
-		"output neurons":  operators.Neurons(optimizers.GradientDescent()),
-		"output logistic": operators.Logistic(),
-	}
-	// no auxiliary information necessary
 	var err error
-	if net, err = bs.Load(path, types, nil); err != nil {
+	if net, err = bs.Load(path); err != nil {
 		panic(err.Error())
 	}
 	fmt.Println("Done!")

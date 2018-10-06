@@ -15,6 +15,10 @@ func Mult() mult {
 	return mult(0)
 }
 
+func (t mult) TypeString() string {
+	return "multiply"
+}
+
 func (t mult) Init(n *bs.Node) error {
 	if n.NumInputs() == 0 {
 		return errors.Errorf("Must have >= 1 input")
@@ -35,7 +39,7 @@ func (t mult) Save(n *bs.Node, dirPath string) error {
 }
 
 // does not save anything
-func (t mult) Load(n *bs.Node, dirPath string, aux []interface{}) error {
+func (t mult) Load(n *bs.Node, dirPath string) error {
 	return nil
 }
 
