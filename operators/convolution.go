@@ -292,7 +292,7 @@ func (c *convolution) Save(n *bs.Node, dirPath string) error {
 
 // does not check if the loaded data is intact
 // only needs to be provided an empty struct; everything else will be filled in
-func (c *convolution) Load(n *bs.Node, dirPath string) error {
+func (c *convolution) Load(dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -315,7 +315,7 @@ func (c *convolution) Load(n *bs.Node, dirPath string) error {
 		f.Close()
 	}
 
-	if err = c.opt.Load(n, dirPath+"/opt"); err != nil {
+	if err = c.opt.Load(dirPath + "/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 

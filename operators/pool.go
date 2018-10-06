@@ -195,7 +195,7 @@ func (a *avgPool) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (a *avgPool) Load(n *bs.Node, dirPath string) error {
+func (a *avgPool) Load(dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -478,7 +478,7 @@ func (mp *maxPool) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (mp *maxPool) Load(n *bs.Node, dirPath string) error {
+func (mp *maxPool) Load(dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {

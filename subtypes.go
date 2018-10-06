@@ -1,7 +1,21 @@
 package badstudent
 
+type Storable interface {
+	// Save saves the object, given a path to a directory, with no
+	// appended backslash.
+	Save(*Node, string) error
+
+	// Load loads the object, given a path to a directory, with no
+	// appended backslash.
+	//
+	// For Operators, Loading will take place before compilation.
+	Load(string) error
+}
+
 // Operator is an interface for defining layers and activation functions
 type Operator interface {
+	Storable
+
 	// should initialize any weights if used, and return the number of output values from the operation
 	// Init() will always be run on an operator before any other method
 	// Init() will only be run once
@@ -14,22 +28,6 @@ type Operator interface {
 	// For example: the Operator "Identity" should return "identity", or something
 	// to that effect.
 	TypeString() string
-
-	// given a path to a directory (and the name of it, without a '/' at the end)
-	// should store enough information to recreate the Operator from file, should
-	// the need arise
-	//
-	// the directory will not be created, used, or altered by the library itself
-	Save(*Node, string) error
-
-	// given a path to a directory (and the name of it, without a '/' a the end)
-	// should use the information already in the directory to recreate this Operator
-	// from a file
-	// should produce the same result as Init(). The provided node will be at the
-	// same stage as Init() in its construction
-	//
-	// the directory will not be created, used, or altered by the library itself
-	Load(*Node, string) error
 
 	// Should update the values of the node to reflect the inputs and weights (if any)
 	// arguments: given node, source slice for the values of that node
@@ -83,6 +81,8 @@ type Operator interface {
 
 // Optimizer is an interface
 type Optimizer interface {
+	Storable
+
 	// Run is called to suggest changes to each weight, given:
 	// number of weights, gradient at weight, function to add to weights,
 	// and a learning-rate
@@ -92,9 +92,6 @@ type Optimizer interface {
 	// For example: the Optimizer "Adam" should return "adam", or something
 	// to that effect.
 	TypeString() string
-
-	Save(*Node, string) error
-	Load(*Node, string) error
 }
 
 // Initializer dictates how the weights in an Operator will be set, given

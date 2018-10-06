@@ -36,6 +36,6 @@ func (g gradientdescent) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (g gradientdescent) Load(n *bs.Node, dirPath string) error {
+func (g gradientdescent) Load(dirPath string) error {
 	return nil
 }

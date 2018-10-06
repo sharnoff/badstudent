@@ -4,6 +4,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Note to future self: If this is left nil, must check at Compile
+// that all Operators that need an optimizer have one
+var defaultOptimizer func() Optimizer
+
+func SetDefaultOptimizer(f func() Optimizer) {
+	defaultOptimizer = f
+}
+
 func (net *Network) initialize() {
 	if net.inputs != nil {
 		return

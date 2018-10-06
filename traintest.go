@@ -41,8 +41,8 @@ func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf 
 type Datum struct {
 	// Inputs is the input of the network. It must have the same size as
 	// that of the network's inputs.
-	Inputs  []float64
-	
+	Inputs []float64
+
 	// Outputs is the expected output of the network, given the input.
 	//
 	// Providing nil (or length 0) can be used to signify that the outputs

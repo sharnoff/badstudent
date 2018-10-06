@@ -33,7 +33,7 @@ func (t tanh) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t tanh) Load(n *bs.Node, dirPath string) error {
+func (t tanh) Load(dirPath string) error {
 	return nil
 }
 

@@ -70,6 +70,8 @@ type Node struct {
 	// handles all of the actual operations from
 	typ Operator
 
+	opt Optimizer
+
 	// the values of the node -- essentially its outputs
 	//
 	// even if the values are not stored in the node, this will

@@ -89,7 +89,7 @@ func (net *Network) finalize() error {
 				// if it has no inputs
 				continue
 			} else if num(root.outputs) == 0 {
-				// this node can't output to itself if it has no outputs 
+				// this node can't output to itself if it has no outputs
 				continue
 			} else if root.Delay() != 0 {
 				// This node outputs to everything with delay, so it cannot

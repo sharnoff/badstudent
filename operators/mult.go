@@ -39,7 +39,7 @@ func (t mult) Save(n *bs.Node, dirPath string) error {
 }
 
 // does not save anything
-func (t mult) Load(n *bs.Node, dirPath string) error {
+func (t mult) Load(dirPath string) error {
 	return nil
 }
 

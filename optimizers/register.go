@@ -3,8 +3,8 @@ package optimizers
 import bs "github.com/sharnoff/badstudent"
 
 func init() {
-	list := map[string]func() bs.Optimizer {
-		"SGD": func() bs.Optimizer {return GradientDescent()},
+	list := map[string]func() bs.Optimizer{
+		"SGD": func() bs.Optimizer { return GradientDescent() },
 	}
 
 	for s, f := range list {
@@ -13,4 +13,6 @@ func init() {
 			panic(err.Error())
 		}
 	}
+
+	bs.SetDefaultOptimizer(func() bs.Optimizer { return GradientDescent() })
 }

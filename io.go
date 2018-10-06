@@ -220,7 +220,7 @@ func Load(dirPath string) (*Network, error) {
 			}
 		}
 
-		justAdded, err := net.Placeholder(pn.Name, pn.Size)
+		_, err = net.Placeholder(pn.Name, pn.Size)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to add placeholder Node %q (id %d) to reconstructing Network\n", pn.Name, id)
 		}
@@ -235,7 +235,7 @@ func Load(dirPath string) (*Network, error) {
 			}
 
 			typs[id] = t()
-			if err = typs[id].Load(justAdded, dirPath + "/" + strconv.Itoa(id) + "/" + op_ext); err != nil {
+			if err = typs[id].Load(dirPath + "/" + strconv.Itoa(id) + "/" + op_ext); err != nil {
 				return nil, errors.Wrapf(err, "Failed to load Operator for Node %q (id %d)\n", pn.Name, id)
 			}
 		}

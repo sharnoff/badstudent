@@ -38,7 +38,7 @@ func (t logistic) Save(n *bs.Node, dirPath string) error {
 	return nil
 }
 
-func (t logistic) Load(n *bs.Node, dirPath string) error {
+func (t logistic) Load(dirPath string) error {
 	return nil
 }
 

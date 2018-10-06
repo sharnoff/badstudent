@@ -104,7 +104,7 @@ func (n *neurons) Save(nd *bs.Node, dirPath string) error {
 }
 
 // decodes JSON from 'weights.txt'
-func (n *neurons) Load(nd *bs.Node, dirPath string) error {
+func (n *neurons) Load(dirPath string) error {
 
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
@@ -126,13 +126,9 @@ func (n *neurons) Load(nd *bs.Node, dirPath string) error {
 		}
 		finishedSafely = true
 		f.Close()
-
-		if nd.Size() != len(n.Weights) || nd.Size() != len(n.Biases) {
-			return errors.Errorf("Couldn't load operator: !(nd.Size() == len(weights) == len(biases)) (%d, %d, %d)", nd.Size(), len(n.Weights), len(n.Biases))
-		}
 	}
 
-	if err = n.opt.Load(nd, dirPath+"/opt"); err != nil {
+	if err = n.opt.Load(dirPath + "/opt"); err != nil {
 		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
 	}
 
