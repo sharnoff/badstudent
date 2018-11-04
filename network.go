@@ -62,3 +62,21 @@ func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 
 	return net.outputs.getValues(true), nil
 }
+
+// SetCost changes the CostFunction of the Network, post-Finalization. This allows
+// different CostFunctions for training and final model evaluation.
+func (net *Network) SetCost(cf CostFunction) *Network {
+	if net.err != nil {
+		return net
+	}
+
+	net.cf = cf
+	return net
+}
+
+// Error returns any errors encountered while constructing the network, particularly
+// while shaping the architecture. This method will always return nil after the
+// Network has been Finalized.
+func (net *Network) Error() error {
+	return net.err
+}

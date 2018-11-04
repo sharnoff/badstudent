@@ -8,6 +8,18 @@ type Network struct {
 
 	nodesByID []*Node
 
+	err error
+
+	cf CostFunction
+
+	inits []Initializer
+
+	hyperParams map[string]HyperParameter
+
+	// used to keep track of the current iteration during training. Also incremented
+	// by Correct
+	iter int
+
 	// Whether or not there is the possibility of there being a loop in the
 	// passage of values from Node to Node
 	mayHaveLoop bool
@@ -23,7 +35,7 @@ type Network struct {
 	stat status
 }
 
-// nodeGroups are a just a collection of what would be individual functions
+// nodeGroups are a collection of what would instead be individual functions
 // because of how different objects handle slices of Nodes
 //
 // In order to allow nodeGroups to exist, Nodes each have a field: 'group',
@@ -50,8 +62,8 @@ type nodeGroup struct {
 	sumVals []int
 }
 
-// The Node is the fundamental building block with which the network is built.
-// Each node has an Operator, which determines how it changes the values it receives as input
+// Node is the fundamental building block with which the network is built.
+// Each Node has an Operator, which determines how it changes the values it receives as input
 type Node struct {
 	// The name that will be used to print this node.
 	// Used for unique identification, can be empty
@@ -67,24 +79,35 @@ type Node struct {
 	// otherwise is nil
 	group *nodeGroup
 
-	// handles all of the actual operations from
+	// the root operator
 	typ Operator
 
+	// type castings of Operator: (nil if not used)
+	adj Adjustable
+	el  Elementwise
+	lyr Layer
+
+	// nil if adj is nil
 	opt Optimizer
 
+	// changes to the weights that have been delayed until the end of the batch
+	delayedWeights []float64
+
+	// these are exclusively for the Optimizer
+	hyperParams map[string]HyperParameter
+
 	// the values of the node -- essentially its outputs
-	//
-	// even if the values are not stored in the node, this will
-	// still have the length of the number of the node's values,
-	// for syntactic simplicity
 	values []float64
 
-	// the derivative of each value w.r.t. the total cost
-	// of the particular training example
+	// the derivative of each value w.r.t. the total cost of the current
+	// training sample
+	//
+	// if the deltas of this Node should not be calculated, deltas will be nil.
 	deltas []float64 // δ
 
-	// whether or not the deltas of the node will actually be calculated
-	deltasMatter bool
+	// whether or not the input deltas need to be calculated. Determined purely
+	// by inputs' need to have deltas calculated
+	calcInDeltas bool
 
 	// The set of Nodes that the given Node takes input from
 	inputs *nodeGroup
@@ -94,12 +117,17 @@ type Node struct {
 
 	// what index in the network outputs the values of the node start at
 	// ex: for the first output node, its 'placeInOutputs' would be 0
+	//
+	// equal to -1 if not an output
 	placeInOutputs int
+
+	tempDelayDeltas []float64
 
 	delay        chan []float64
 	delayDeltas  chan []float64
 	storedValues [][]float64
 
-	// Whether or not the current task assigned by the network
+	// Whether or not the current task assigned by the network has been
+	// completed
 	completed bool
 }

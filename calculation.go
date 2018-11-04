@@ -2,6 +2,8 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
+	"github.com/sharnoff/badstudent/utils"
+	"runtime"
 )
 
 type status int8
@@ -21,8 +23,8 @@ func (net *Network) resetCompletion() {
 	}
 }
 
-// clears delay-related functions for all nodes in the network
-// Essentially flushes a recurrent-type network
+// ClearDelays clears all delay-related functions for all nodes in the Network. It
+// essentially flushes a recurrent-type Network.
 func (net *Network) ClearDelays() {
 	for _, n := range net.nodesByID {
 		for i := 0; i < cap(n.delay); i++ {
@@ -41,8 +43,8 @@ func (net *Network) ClearDelays() {
 // * all nodes affect outputs
 // * there are no loops with zero delay
 // Determines:
-// * each node's need for having its own deltas calculated
-func (net *Network) finalize() error {
+// * each node's need for calculating input deltas
+func (net *Network) checkGraph() error {
 	if net.stat >= finalized {
 		return nil
 	}
@@ -91,7 +93,7 @@ func (net *Network) finalize() error {
 			} else if num(root.outputs) == 0 {
 				// this node can't output to itself if it has no outputs
 				continue
-			} else if root.Delay() != 0 {
+			} else if root.HasDelay() {
 				// This node outputs to everything with delay, so it cannot
 				// output to itself with none
 				continue
@@ -100,7 +102,7 @@ func (net *Network) finalize() error {
 			check = func(n *Node) error {
 				if n.completed {
 					return nil
-				} else if n.Delay() != 0 {
+				} else if n.HasDelay() {
 					// cannot be part of a 0-delay loop
 					return nil
 				}
@@ -130,24 +132,30 @@ func (net *Network) finalize() error {
 		}
 	}
 
-	// determine each node's need for having deltas calculated
+	// determine each node's need for calculating input deltas
 	{
+		// if deltas should not be calculated, it will be indicated by the
+		// deltas of the Node having length 0
+
 		var matter func(*Node, bool)
-		matter = func(n *Node, deltasMatter bool) {
-			// condition for running
-			if !n.completed || (!n.deltasMatter && deltasMatter) {
+		matter = func(n *Node, dm bool) { // 'dm' is short for 'deltas matter'
+			if n.completed && (len(n.deltas) != 0 || !dm) {
+				return
+			}
 
-				if n.IsInput() {
-					deltasMatter = false
-				} else {
-					deltasMatter = deltasMatter || n.typ.CanBeAdjusted(n)
-				}
-				n.deltasMatter = deltasMatter
-				n.completed = true
+			if n.IsInput() {
+				dm = false
+			} else {
+				dm = dm || n.adj != nil // if n is adjustable, deltas matter
+			}
 
-				for _, out := range n.outputs.nodes {
-					matter(out, n.deltasMatter)
-				}
+			if dm {
+				n.deltas = make([]float64, n.Size())
+			}
+			n.completed = true
+
+			for _, out := range n.outputs.nodes {
+				matter(out, dm)
 			}
 
 			return
@@ -155,6 +163,21 @@ func (net *Network) finalize() error {
 
 		for _, in := range net.inputs.nodes {
 			matter(in, false)
+		}
+
+		for _, n := range net.nodesByID {
+			n.calcInDeltas = false
+
+			if len(n.deltas) == 0 {
+				continue
+			}
+
+			for _, in := range n.inputs.nodes {
+				if len(in.deltas) != 0 {
+					n.calcInDeltas = true
+					break
+				}
+			}
 		}
 
 		net.resetCompletion()
@@ -171,44 +194,67 @@ func (n *Node) setValues(values []float64) {
 	}
 }
 
-// A full diagram of the operational flow of evaluate() and getDeltas() is available upon request
-func (n *Node) evaluate() error {
+const (
+	threadsPerCPU        int = 2
+	threadSizeMultiplier int = 10
+)
+
+func (n *Node) calculateValues(vs []float64) {
+	if n.lyr != nil {
+		n.lyr.Evaluate(n, vs)
+	} else { // n.el must not be nil in order for n.typ to be valid
+		inputs := n.CopyOfInputs()
+
+		f := func(i int) {
+			n.values[i] = n.el.Value(inputs[i], i)
+		}
+
+		opsPerThread := runtime.NumCPU() * threadSizeMultiplier
+		utils.MultiThread(0, n.Size(), f, opsPerThread, threadsPerCPU)
+	}
+}
+
+// Note: this is only really applicable for input Nodes
+func (n *Node) storeValues() {
+	vs := make([]float64, n.Size())
+	copy(vs, n.values)
+	n.storedValues = append(n.storedValues, vs)
+}
+
+func (n *Node) setFromStored() {
+	n.setValues(n.storedValues[len(n.storedValues)-1])
+	n.storedValues = n.storedValues[:len(n.storedValues)-1]
+}
+
+func (n *Node) evaluate() {
 	if n.completed {
-		return nil
+		return
 	} else if n.IsInput() {
 		if n.host.hasDelay {
 			if n.host.isGettingDeltas() {
-				n.setValues(n.storedValues[len(n.storedValues)-1])
-				n.storedValues = n.storedValues[:len(n.storedValues)-1]
+				n.setFromStored()
 			} else {
-				vs := n.values
-				if n.group != nil { // if n's values will be overwritten
-					vs = make([]float64, len(n.values))
-					copy(vs, n.values)
-				}
-
-				n.storedValues = append(n.storedValues, vs)
+				n.storeValues()
 			}
 		}
 
 		n.completed = true
-		return nil
+		return
 	}
 
 	if n.HasDelay() {
 		if !n.host.isGettingDeltas() {
+			// forward calculation, set from delay
 			n.setValues(<-n.delay)
-		} else { // if getting deltas
-			n.setValues(n.storedValues[len(n.storedValues)-1])
-			n.storedValues = n.storedValues[:len(n.storedValues)-1]
+		} else {
+			// backprop, set from stored
+			n.setFromStored()
 		}
 		n.completed = true
 	}
 
 	for _, in := range n.inputs.nodes {
-		if err := in.evaluate(); err != nil {
-			return errors.Wrapf(err, "Evaluating Node %v failed\n", in)
-		}
+		in.evaluate()
 	}
 
 	values := n.values
@@ -216,22 +262,24 @@ func (n *Node) evaluate() error {
 		values = make([]float64, len(n.values))
 	}
 
-	if err := n.typ.Evaluate(n, values); err != nil {
-		return errors.Wrapf(err, "Operator evaluation failed\n")
-	}
+	n.calculateValues(values)
 
 	if n.HasDelay() && !n.host.isGettingDeltas() {
 		n.delay <- values
 		n.storedValues = append(n.storedValues, values)
 	}
 
+	// if we're backpropagating, don't worry about setting values; they were
+	// set earlier
+
 	n.completed = true
-	return nil
 }
 
 // Changes the values of the Nodes so that they accurately reflect the inputs
 //
 // 'recurrent' forces ignoring avoiding repetition if net.stat >= evaluated, if true
+//
+// returns error iff the network has not been finalized
 func (net *Network) evaluate(recurrent bool) error {
 	if net.stat < finalized {
 		return errors.Errorf("Network is not complete")
@@ -240,9 +288,7 @@ func (net *Network) evaluate(recurrent bool) error {
 	}
 
 	for _, out := range net.outputs.nodes {
-		if err := out.evaluate(); err != nil {
-			return errors.Wrapf(err, "Evaluating Network output Node %v failed\n", out)
-		}
+		out.evaluate()
 	}
 
 	net.resetCompletion()
@@ -251,120 +297,103 @@ func (net *Network) evaluate(recurrent bool) error {
 	return nil
 }
 
-// Calculates the deltas for each value of the node
-//
-// A full diagram of the operational logic of evaluate() and getDeltas() is available upon request
-func (n *Node) getDeltas(cfDeriv func(int, int, func(int, float64)) error) error {
-
-	if n.completed && !n.HasDelay() {
-		return nil
-	} else if !n.deltasMatter {
-		n.completed = true
-
-		for _, out := range n.outputs.nodes {
-			if err := out.getDeltas(cfDeriv); err != nil {
-				return errors.Wrapf(err, "Getting deltas of Node %v failed\n", out)
-			}
-		}
-
-		return nil
-	}
-
-	deltas := make([]float64, len(n.values))
-
-	add := func(index int, addition float64) {
-		deltas[index] += addition
-	}
-
-	if n.IsOutput() {
-		if err := cfDeriv(n.placeInOutputs, n.placeInOutputs+len(n.values), add); err != nil {
-			return errors.Wrapf(err, "Getting derivatives of cost function failed\n")
-		}
-	}
-
-	for _, out := range n.outputs.nodes {
-		if err := out.inputDeltas(n, add, cfDeriv); err != nil {
-			return errors.Wrapf(err, "Getting input deltas of Node %v from Node %v failed\n", out, n)
-		}
-	}
-
-	if n.HasDelay() {
-		n.delayDeltas <- deltas
+func (n *Node) calculateInputDeltas() {
+	if n.lyr != nil {
+		ds := n.lyr.InputDeltas(n)
+		n.inputs.addDeltas(ds)
 	} else {
-		n.deltas = deltas
-	}
-
-	n.completed = true
-	return nil
-}
-
-// provides the deltas of each value to getDeltas()
-// calls getDeltas() of self before running
-//
-// Doesn't mark complete or not because this could be called multiple times for multiple inputs
-func (n *Node) inputDeltas(input *Node, add func(int, float64), cfDeriv func(int, int, func(int, float64)) error) error {
-
-	// if it's done, don't bother getting deltas
-	// This is needed to avoid secondary loops
-	if !n.completed {
-		if n.HasDelay() {
-			// this case should never happen, but it's here for security
-			n.deltas = <-n.delayDeltas
-			n.completed = true
-		} else {
-			if err := n.getDeltas(cfDeriv); err != nil {
-				return errors.Errorf("Getting deltas of Node %v failed\n", n)
+		// could be improved to only calculate for inputs that need deltas
+		start := 0
+		for i, in := range n.inputs.nodes {
+			if len(in.deltas) == 0 {
+				continue
 			}
+
+			end := start + n.inputs.nodes[i].Size()
+
+			var ds []float64
+			if in.HasDelay() {
+				ds = in.tempDelayDeltas
+			} else {
+				ds = in.deltas
+			}
+
+			f := func(x int) {
+				ds[x-start] += n.el.Deriv(n, x) * n.deltas[x]
+			}
+
+			opsPerThread := runtime.NumCPU() * threadSizeMultiplier
+			utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
+
+			start = end
+		}
+	}
+}
+
+// can only be called by (*Network).getDeltas()
+// recurses towards outputs, even if calculating input deltas is unnecessary
+func (n *Node) inputDeltas() {
+	if n.completed {
+		return
+	} else if !n.calcInDeltas {
+		// recurse towards outputs
+		for _, o := range n.outputs.nodes {
+			o.inputDeltas()
+		}
+
+		n.completed = true
+	}
+
+	if num(n.outputs) != 0 && n.Delay() == 0 {
+		// make sure that this node's deltas are calculated.
+		// if it's an output, they have already been added to by the network
+		for _, o := range n.outputs.nodes {
+			o.inputDeltas()
 		}
 	}
 
-	// find the index in the inputs of 'n' that 'input' is.
-	inputIndex := -1
-	for i, in := range n.inputs.nodes {
-		if in == input {
-			inputIndex = i
-			break
-		}
-	}
-	if inputIndex == -1 {
-		return errors.Errorf("Can't provide input deltas of node %v to %v, %v is not an input of %v", n, input, input, n)
-	}
-
-	end := n.inputs.sumVals[inputIndex]
-	start := end - input.Size()
-
-	if err := n.typ.InputDeltas(n, add, start, end); err != nil {
-		return errors.Wrapf(err, "Operator input delta calculation failed\n")
-	}
-
-	return nil
+	n.calculateInputDeltas()
+	n.completed = true
 }
 
-// only accurate while there is some calculation happening
-func (net *Network) isGettingDeltas() bool {
-	return net.stat >= evaluated
-}
-
-// Calculates the deltas of all of the Nodes in the Network whose deltas
-// must be calculated
-//
-// targets is assumed to be the proper length
-func (net *Network) getDeltas(targets []float64, cf CostFunction) error {
+// assumes len(targets) == net.OutputSize()
+func (net *Network) getDeltas(targets []float64) error {
+	// initial conditions
 	if net.stat < evaluated {
-		return errors.Errorf("Network must be evaluated before getting deltas")
-	} else if net.stat >= deltas {
-		return nil
-	} else if net.hasDelay {
-		return errors.Errorf("Cannot obtain deltas for Network with delay")
+		return errors.Errorf("Internal error: Network has not been evaluated")
 	}
 
-	cfDeriv := func(start, end int, add func(int, float64)) error {
-		return cf.Deriv(net.outputs.getValues(false), targets, start, end, add)
+	// reset deltas
+	for _, n := range net.nodesByID {
+		if n.HasDelay() {
+			n.tempDelayDeltas = make([]float64, len(n.deltas))
+			n.deltas = <-n.delayDeltas
+		} else {
+			n.deltas = make([]float64, len(n.deltas))
+		}
 	}
 
-	for i, in := range net.inputs.nodes {
-		if err := in.getDeltas(cfDeriv); err != nil {
-			return errors.Wrapf(err, "Failed to get deltas for network input %v (#%d)\n", in, i)
+	// add to output deltas
+	if len(targets) != 0 {
+		// we check if len(targets) is zero because recurrent models can exempt
+		// certain outputs from having significance by indicating providing no
+		// targets
+
+		// Indicating 'false' for duplicating opens the possibility of cost
+		// functions to corrupt data. This issue is not significant.
+		ds := net.cf.Derivs(net.outputs.getValues(false), targets)
+		net.outputs.addDeltas(ds)
+	}
+
+	// recurse through network
+	for _, in := range net.inputs.nodes {
+		in.inputDeltas()
+	}
+
+	// put temporary delay deltas back into delay
+	for _, n := range net.nodesByID {
+		if n.HasDelay() {
+			n.delayDeltas <- n.tempDelayDeltas
 		}
 	}
 
@@ -373,126 +402,112 @@ func (net *Network) getDeltas(targets []float64, cf CostFunction) error {
 	return nil
 }
 
-func (net *Network) adjustRecurrent(targets [][]float64, cf CostFunction, learningRates []float64, saveChanges bool) error {
-	// unsafe setting, but should practically be fine
-	net.stat = evaluated
+// only accurate while there is some calculation happening
+func (net *Network) isGettingDeltas() bool {
+	return net.stat >= evaluated
+}
+
+// assumes len(targets[n]) == net.OutputSize()
+func (net *Network) adjustRecurrent(targets [][]float64, saveChanges bool) error {
+	// Note: there was previously a line here, with unknown purpose:
+	// net.stat = evaluated
+	// with the comment:
+	// // unsafe setting, but should practically be fine
+	//
+	// Additionally, the previous version bypassed getDeltas(), but this does not.
+
+	if net.stat < finalized { // may run into issues if net.stat = finalized
+		return errors.Errorf("Network is not complete")
+	}
 
 	for i := len(targets) - 1; i >= 0; i-- {
 		if err := net.evaluate(true); err != nil {
-			return errors.Wrapf(err, "Failed to evaluate network to use targets %d\n", i)
+			// this error should never occur
+			return errors.Wrapf(err, "Failed to evaluate network with targets[%d]\n", i)
 		}
 
-		var cfDeriv func(int, int, func(int, float64)) error
-		if targets[i] != nil {
-			cfDeriv = func(start, end int, add func(int, float64)) error {
-				return cf.Deriv(net.outputs.getValues(false), targets[i], start, end, add)
-			}
-		} else {
-			cfDeriv = func(start, end int, add func(int, float64)) error {
-				return nil
-			}
+		if err := net.getDeltas(targets[i]); err != nil {
+			return errors.Wrapf(err, "Failed to get deltas of network with targets[%d]\n", i)
 		}
 
-		// bypass getDeltas
-		{
-			for _, n := range net.nodesByID {
-				if n.HasDelay() && n.deltasMatter {
-					n.deltas = <-n.delayDeltas
-					n.completed = true
-				}
-			}
-
-			for i, in := range net.inputs.nodes {
-				if err := in.getDeltas(cfDeriv); err != nil {
-					return errors.Wrapf(err, "Failed to get deltas for network input %v (#%d)\n", in, i)
-				}
-			}
-
-			for _, n := range net.nodesByID {
-				if n.HasDelay() {
-					if err := n.getDeltas(cfDeriv); err != nil {
-						return errors.Wrapf(err, "Failed to get deltas for node with delay: %v\n", n)
-					}
-				}
-			}
-
-			net.stat = deltas
-			net.resetCompletion()
-		}
-
-		if err := net.adjust(learningRates[i], true); err != nil {
-			return errors.Wrapf(err, "Failed to adjust after getting deltas with targets[%d]\n", i)
+		if err := net.adjust(true); err != nil {
+			return errors.Wrapf(err, "Failed to adjust network with targets[%d]\n", i)
 		}
 	}
 
 	if !saveChanges {
-		if err := net.AddWeights(); err != nil {
-			return errors.Wrapf(err, "Failed to add weights after adjusting\n")
-		}
-	}
-
-	net.ClearDelays()
-	return nil
-}
-
-func (n *Node) adjust(learningRate float64, saveChanges bool) error {
-	if n.IsInput() {
-		return nil
-	}
-
-	if err := n.typ.Adjust(n, learningRate, saveChanges); err != nil {
-		return errors.Wrapf(err, "Operator adjustment failed\n")
+		net.AddWeights()
 	}
 
 	return nil
 }
 
-// Does not use completion to track progress
-func (net *Network) adjust(learningRate float64, saveChanges bool) error {
+// does not use completion. There is no possibility of overlap
+func (net *Network) adjust(saveChanges bool) error {
 	if net.stat < deltas {
-		return errors.Errorf("Network must have deltas calculated before adjusting weights")
+		return errors.Errorf("Internal error: Network has not had deltas calculated")
 	}
 
 	for _, n := range net.nodesByID {
-		if err := n.adjust(learningRate, saveChanges); err != nil {
-			return errors.Wrapf(err, "Failed to adjust Node %v\n", n)
-		}
+		n.adjust(saveChanges)
 	}
 
 	if saveChanges {
 		net.hasSavedChanges = true
 	}
 
-	net.stat = adjusted
 	return nil
 }
 
-func (n *Node) addWeights() error {
-	if n.IsInput() {
-		return nil
+func (n *Node) adjust(saveChanges bool) {
+	if n.adj == nil {
+		return
 	}
 
-	if err := n.typ.AddWeights(n); err != nil {
-		return errors.Wrapf(err, "Operator failed to add weights\n", n)
+	w := n.delayedWeights
+	if !saveChanges {
+		w = n.adj.Weights()
+	} else if len(n.delayedWeights) == 0 {
+		n.delayedWeights = make([]float64, len(n.adj.Weights()))
+		w = n.delayedWeights
 	}
 
-	return nil
+	n.opt.Run(n, n.adj, w)
+}
+
+func (n *Node) addWeights() {
+	if n.adj == nil || len(n.delayedWeights) == 0 {
+		return
+	}
+
+	// essentially:
+	/* for i := range n.delayedWeights {
+		n.adj.Weights()[i] += n.delayedWeights[i]
+	} */
+
+	ws := n.adj.Weights()
+
+	f := func(i int) {
+		ws[i] += n.delayedWeights[i]
+	}
+
+	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
+	utils.MultiThread(0, len(ws), f, opsPerThread, threadsPerCPU)
+	n.delayedWeights = make([]float64, len(ws))
 }
 
 // Updates the weights in the network with any previously saved changes.
 // Only runs if there are changes that have not been applied
-func (net *Network) AddWeights() error {
+func (net *Network) AddWeights() {
 	if !net.hasSavedChanges {
-		return nil
+		return
 	}
 
 	for _, n := range net.nodesByID {
-		if err := n.addWeights(); err != nil {
-			return errors.Wrapf(err, "Failed to add weights of Node %v\n", n)
-		}
+		n.addWeights()
 	}
 
 	net.hasSavedChanges = false
 	net.stat = finalized
-	return nil
+	return
 }

@@ -2,79 +2,90 @@ package badstudent
 
 import (
 	"github.com/pkg/errors"
-	"math"
-	"reflect"
 )
 
-// Adjusts the weights in the network, according to the provided arguments
-// if 'saveChanges' is true, the adjustments will not be implemented immediately
-//
-// 'learningRate' determines the strength of the changes
-// 'cf' is the CostFunction that will be optimized for
-func (net *Network) Correct(inputs, targets []float64, learningRate float64, cf CostFunction, saveChanges bool) (cost float64, outs []float64, err error) {
-	outs, err = net.GetOutputs(inputs)
-	if err != nil {
-		err = errors.Wrapf(err, "Couldn't correct network, getting outputs failed\n")
+// Note: Correct should likely be removed; it is not used.
+
+// Correct adjusts the weights in the network, according to the provided arguments.
+// If 'saveChanges' is true, the adjustments will not be implemented immediately,
+// and will instead wait until AddWeights is called.
+func (net *Network) Correct(inputs, targets []float64, saveChanges bool) (cost float64, outs []float64, err error) {
+
+	if outs, err = net.GetOutputs(inputs); err != nil {
+		err = errors.Wrapf(err, "Getting outputs failed\n")
 		return
 	}
 
-	if err = net.getDeltas(targets, cf); err != nil {
-		err = errors.Wrapf(err, "Failed to get deltas of Network\n")
+	if err = net.getDeltas(targets); err != nil {
+		err = errors.Wrapf(err, "Getting deltas failed\n")
 		return
 	}
 
-	if err = net.adjust(learningRate, saveChanges); err != nil {
-		err = errors.Wrapf(err, "Failed to adjust weights of Network\n")
+	if err = net.adjust(saveChanges); err != nil {
+		err = errors.Wrapf(err, "Adjusting weights failed\n")
 		return
 	}
 
-	cost, err = cf.Cost(outs, targets)
-	if err != nil {
-		err = errors.Wrapf(err, "Couldn't calculate cost after correcting network, SquaredError() failed\n")
-		return
-	}
-
+	cost = net.cf.Cost(outs, targets)
+	net.iter++
 	return
 }
 
-// Datum is the simple package used to send training samples to the Network
+// Datum is a simple wrapper used to send training samples to the Network
 type Datum struct {
-	// Inputs is the input of the network. It must have the same size as
-	// that of the network's inputs.
+	// Inputs is the input of the network. It must have the same size as that of the
+	// network's inputs.
 	Inputs []float64
 
 	// Outputs is the expected output of the network, given the input.
 	//
-	// Providing nil (or length 0) can be used to signify that the outputs
-	// are not significant. This can only be used for recurrent models.
+	// For recurrent models, providing nil (or length 0) can be used to signify that
+	// the outputs are not significant.
 	Outputs []float64
 }
 
-func (d Datum) fits(net *Network) bool {
-	return len(d.Inputs) == net.InputSize() && (len(d.Outputs) == 0 || len(d.Outputs) == net.OutputSize())
+// Fits indicates whether or not a given Datum's dimensions match those of the
+// Network, allowing it to be used for training or testing.
+func (d Datum) Fits(net *Network) bool {
+	return len(d.Inputs) == net.InputSize() && ((len(d.Outputs) == 0 && net.hasDelay) || len(d.Outputs) == net.OutputSize())
 }
 
-// The primary method of supplying data to the network -- for training OR testing
+// DataSupplier is the primary method of providing datasets to the Network, either
+// for training or testing.
 type DataSupplier interface {
-	// Whether or not the data being supplied is for a recurrent-network
+	// Get returns the next piece of data, given the current iteration.
+	Get(int) (Datum, error)
+
+	// BatchEnded returns whether or not the most recent batch has ended, given the
+	// current iteration. To not use batching, BatchEnded should always return true
+	// (effective mini-batch size of 1).
 	//
-	// Will only be called once, before any data is requested
-	IsSequential() bool
+	// BatchEnded will be called after the last Datum in the batch has been
+	// retrieved. It will not be called if the DataSupplier is being used for
+	// testing.
+	BatchEnded(int) bool
 
-	// Returns the next bit of data
-	Get() (Datum, error)
+	// DoneTesting indicates whether or not the testing process has finished. This
+	// will only be called if the DataSupplier is actually used for providing
+	// testing data.
+	//
+	// DoneTesting is called at the same point as BatchEnded would be.
+	DoneTesting(int) bool
+}
 
-	// Only for recurrent networks: true iff there is no more data in the most recent set
-	// Will not be used if IsSequential() returns false
-	SetEnded() bool
+// Sequential builds upon DataSupplier, adding extra functionality for recurrent
+// Networks.
+type Sequential interface {
+	DataSupplier
 
-	// Whether or not the most recent batch has ended
-	// For an effective batch size of 1, this should always return true.
-	BatchEnded() bool
-
-	// only called if this is supplying test data
-	// Whether or not the necessary amount of testing has been done
-	DoneTesting() bool
+	// SetEnded returns whether or not the recurrent sequence has finished, given
+	// the current iteration. The DataSupplier methods BatchEnded and DoneTesting
+	// will only be called when SetEnded returns true.
+	//
+	// SetEnded is always immediately followed by BatchEnded or DoneTesting.
+	// SetEnded can also cause DoneTesting to be ignored or delayed if not the end
+	// of a sequence.
+	SetEnded(int) bool
 }
 
 // A wrapper for sending back the progress of the training or testing
@@ -82,7 +93,7 @@ type Result struct {
 	// The iteration the result is being sent before
 	Iteration int
 
-	// Average cost, from CostFunc
+	// Average cost, from the Network's CostFunction
 	Cost float64
 
 	// The fraction correct, as per IsCorrect() from TrainArgs
@@ -94,251 +105,182 @@ type Result struct {
 }
 
 type TrainArgs struct {
-	// The source of data used for training the network
 	TrainData DataSupplier
 
-	// The source of data used for ongoing dev/validation of the network while training
-	// Can be nil if and only if ShouldTest is nil
+	// TestData is the source of cross-validation data while training. This can be
+	// nil if ShouldTest is also nil
 	TestData DataSupplier
 
-	// If omitted, TestData will receive no use; TestData can be nil if this is nil
-	// Will be given the current iteration
-	//
-	// Testing is performed before training. Ex: if on iteration 'n', a batch is completed,
-	// then the next opportunity to test is on iteration 'n + 1', before the start of the
-	// next batch
+	// ShouldTest indicates whether or not testing should be done before the current
+	// iteration. For recurrent Networks, this will only be called in between
+	// sequences (modulus might not always work as intended).
 	ShouldTest func(int) bool
 
-	// Can be omitted to represent an unconditional false
+	// SendStatus indicates whether or not to send back general information about
+	// the status of the training since the last time 'true' was returned.
+	// SendStatus can be left nil to represent an unconditional false.
 	//
-	// If 'true' is returned, general information about the status of the training
-	// since the last time 'true' was returned will be sent through Results
-	//
-	// Will ignore 'true' on iteration 0
+	// 'true' will be ignored on iteration 0.
 	SendStatus func(int) bool
 
-	// Will be called at each successive iteration to determine if training should
-	// continue. Training will stop if 'false' is returned.
-	//
-	// Will be given the iteration (starting at zero) and the error (cost) of the
-	// previous iteration, as determined by CostFunc.
-	// Iteration values start at 0, and the previous error will be NaN for that 0th
-	// iteration.
-	RunCondition func(int, float64) bool
+	// improvement note: A method for Network could be added that gives the previous
+	// cost
 
-	// Will be called at each successive iteration to determine the learning rate to
-	// be used in adjusting the values of the weights in the Network.
-	//
-	// Will be given the iteration (starting at zero) and the error (cost) of the
-	// previous iteration, as determined by CostFunc.
-	// Iteration values start at 0, and the previous error will be NaN for that 0th
-	// iteration.
-	LearningRate func(int, float64) float64
+	// RunCondition will be called at each successive iteration to determine if
+	// training should continue. Training will stop if 'false' is returned.
+	RunCondition func(int) bool
 
-	// If omitted, Results will always give 'Correct' of 0
+	// IsCorrect returns whether or not the network outputs are correct, given the
+	// target outputs. In order, it is given: outputs; targets.
 	//
-	// Will be given: network outputs; target outputs. The length of both will be the
-	// same.
+	// The length of both provided slices is guaranteed to be equal.
 	IsCorrect func([]float64, []float64) bool
 
-	// If omitted, will default to SquaredError(false)
-	CostFunc CostFunction
-
-	// Can be omitted.
-	// Information about the training -- testing results and status updates -- will be sent
-	// through this channel
-	Results chan Result
-
-	// If there is an error, this is where it will be returned.
-	// Train will not run if this is nil.
-	Err *error
+	// Update is how testing and status updates are returned. If both ShouldTest
+	// and SendData are nil, then Update can also be left nil.
+	Update func(Result)
 }
 
-// Trains the network
-func (net *Network) Train(args TrainArgs) {
+func (net *Network) Train(args TrainArgs) error {
 	// handle error cases and set defaults
+	var trainSeq Sequential
 	{
-		if args.Results == nil {
-			args.Results = make(chan Result)
-
-			go func() {
-				for range args.Results {
-				}
-			}()
-		}
-
-		defer close(args.Results)
-
-		if args.Err == nil {
-			return
-		} else if *args.Err != nil {
-			return
+		if args.Update == nil {
+			args.Update = func(r Result) {}
 		}
 
 		if args.TrainData == nil {
-			*args.Err = errors.Errorf("args.Data cannot be nil; there must be training data supplied to the network")
-			return
+			return errors.Errorf("TrainData is nil")
+		}
+
+		var ok bool
+		if trainSeq, ok = args.TrainData.(Sequential); net.hasDelay && !ok {
+			return errors.Errorf("Net has delay; TrainData is not sequential")
 		}
 
 		if args.TestData == nil {
 			if args.ShouldTest != nil {
-				*args.Err = errors.Errorf("If args.TestData is nil, so must args.ShouldTest")
-				return
+				return errors.Errorf("TestData is nil but ShouldTest is not")
 			} else {
-				args.ShouldTest = func(iteration int) bool {
-					return false
-				}
+				args.ShouldTest = func(i int) bool { return false }
 			}
+		} else if _, ok = args.TestData.(Sequential); net.hasDelay && !ok {
+			return errors.Errorf("Net has delay; TestData is not sequential")
 		}
 
 		if args.SendStatus == nil {
-			args.SendStatus = func(iteration int) bool {
-				return false
-			}
+			args.SendStatus = func(i int) bool { return false }
 		}
 
 		if args.RunCondition == nil {
-			*args.Err = errors.Errorf("args.RunCondition cannot be nil")
-			return
-		}
-
-		if args.LearningRate == nil {
-			*args.Err = errors.Errorf("args.LearningRate cannot be nil; there must be a learning rate in order to train")
-			return
+			return errors.Errorf("RunCondition is nil")
 		}
 
 		if args.IsCorrect == nil {
-			args.IsCorrect = func(a, b []float64) bool {
-				return false
-			}
-		}
-
-		if args.CostFunc == nil {
-			args.CostFunc = SquaredError(false)
+			args.IsCorrect = func(a, b []float64) bool { return false }
 		}
 	}
 
-	var iteration int
-	var lastCost float64 = math.NaN()
+	// This does overwrite any correction done independently by Correct, but that
+	// should (hopefully) not matter
+	net.iter = 0
 
 	var statusCost, statusCorrect float64
 	var statusSize int
 
-	// used only for training recurrent neural networks
+	// used only for training RNNs
 	var targets [][]float64
-	var learningRates []float64
+	var betweenSequences, testNext, batchNext bool = net.hasDelay, false, false // a (very) slight optimization
 
-	var betweenSequences bool = true
-
-	// for run condition (actually slightly farther down)
+	// for args.RunCondition() (conditional is embedded farther down)
 	for {
-		if args.SendStatus(iteration) && iteration != 0 {
-			statusCost /= float64(statusSize)
-			statusCorrect /= float64(statusSize)
-
-			args.Results <- Result{
-				Iteration: iteration,
-				Cost:      statusCost,
-				Correct:   statusCorrect,
+		if args.SendStatus(net.iter) && net.iter != 0 {
+			r := Result{
+				Iteration: net.iter,
+				Cost:      statusCost / float64(statusSize),
+				Correct:   statusCorrect / float64(statusSize),
 				IsTest:    false,
 			}
+
+			args.Update(r)
 
 			statusCost, statusCorrect = 0, 0
 			statusSize = 0
 		}
 
-		if args.ShouldTest(iteration) {
+		if args.ShouldTest(net.iter) || (!betweenSequences && testNext) {
 			if net.hasDelay && !betweenSequences {
-				*args.Err = errors.Errorf("Testing for recurrent networks must be done between sets")
-				return
-			}
+				testNext = true
+			} else {
+				cost, correct, err := net.Test(args.TestData, args.IsCorrect)
+				if err != nil {
+					return errors.Wrapf(err, "Testing on iteration %d failed\n", net.iter)
+				}
 
-			cost, correct, err := net.Test(args.TestData, args.CostFunc, args.IsCorrect)
-			if err != nil {
-				*args.Err = errors.Wrapf(err, "Testing failed on iteration %d\n", iteration)
-				return
-			}
+				r := Result{
+					Iteration: net.iter,
+					Cost:      cost,
+					Correct:   correct,
+					IsTest:    true,
+				}
 
-			args.Results <- Result{
-				Iteration: iteration,
-				Cost:      cost,
-				Correct:   correct,
-				IsTest:    true,
+				args.Update(r)
 			}
 		}
 
-		if !args.RunCondition(iteration, lastCost) {
+		if !args.RunCondition(net.iter) {
 			break
 		}
 
 		betweenSequences = false
 
-		d, err := args.TrainData.Get()
+		d, err := args.TrainData.Get(net.iter)
 		if err != nil {
-			*args.Err = errors.Wrapf(err, "Failed to get training data on iteration %d\n", d)
-			return
-		} else if !d.fits(net) {
-			*args.Err = errors.Errorf("Training data received for iteration %d does not fit Network", iteration)
-			return
-		} else if len(d.Outputs) == 0 && !net.hasDelay {
-			*args.Err = errors.Errorf("Training data provided for iteration %d has marked outputs as insignificant though network is not recurrent", iteration)
-			return
+			return errors.Wrapf(err, "Failed to get training data on iteration %d\n", net.iter)
+		} else if !d.Fits(net) {
+			return errors.Errorf("Training data for iteration %d does not fit Network", net.iter)
 		}
 
 		outs, err := net.GetOutputs(d.Inputs)
 		if err != nil {
-			*args.Err = errors.Wrapf(err, "Failed to get network outputs on iteration %d\n", iteration)
-			return
+			return errors.Wrapf(err, "Failed to get Network outputs on iteration %d\n", net.iter)
 		}
 
 		var cost float64
-		if len(d.Outputs) != 0 {
-			cost, err = args.CostFunc.Cost(outs, d.Outputs)
-			if err != nil {
-				*args.Err = errors.Wrapf(err, "Failed to get cost of outputs on iteration %d\n", iteration)
-			}
-		}
-
 		var correct bool
-		if len(d.Outputs) > 0 {
+		if len(d.Outputs) != 0 { // will always be true for non-recurrent
+			cost = net.cf.Cost(outs, d.Outputs)
 			correct = args.IsCorrect(outs, d.Outputs)
 		}
-		batch := args.TrainData.BatchEnded()
 
-		α := args.LearningRate(iteration, lastCost)
-		if !net.hasDelay { // if the network is 'normal'
-			if err := net.getDeltas(d.Outputs, args.CostFunc); err != nil {
-				*args.Err = errors.Wrapf(err, "Failed to get network deltas on iteration %d\n", iteration)
-				return
+		endBatch := args.TrainData.BatchEnded(net.iter)
+
+		if !net.hasDelay {
+			if err := net.getDeltas(d.Outputs); err != nil {
+				return errors.Errorf("Failed to get network deltas on iteration %d\n", net.iter)
 			}
 
-			saveChanges := net.hasSavedChanges || !batch
-			if err := net.adjust(α, saveChanges); err != nil {
-				*args.Err = errors.Wrapf(err, "Failed to adjust network on iteration %d\n", iteration)
+			saveChanges := net.hasSavedChanges || !endBatch
+			if err = net.adjust(saveChanges); err != nil {
+				return errors.Wrapf(err, "Failed to adjust network on iteration %d\n", net.iter)
 			}
 
-			if batch {
-				if err := net.AddWeights(); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed to add weights after iteration %d\n", iteration)
-					return
-				}
+			if endBatch && net.hasSavedChanges {
+				net.AddWeights()
 			}
-		} else { // if the network has delay
+		} else {
 			targets = append(targets, d.Outputs)
-			learningRates = append(learningRates, α)
 
-			if args.TrainData.SetEnded() {
-				if err := net.adjustRecurrent(targets, args.CostFunc, learningRates, !batch); err != nil {
-					*args.Err = errors.Wrapf(err, "Failed to adjust recurrent model after end of set\n")
-					return
+			if trainSeq.SetEnded(net.iter) {
+				if err := net.adjustRecurrent(targets, !(endBatch || batchNext)); err != nil {
+					return errors.Wrapf(err, "Failed to adjust recurrent after end of sequence (iteration %d)\n", net.iter)
 				}
 
 				targets = nil
-				learningRates = nil
 				betweenSequences = true
-			} else if batch { // but not set ended
-				*args.Err = errors.Errorf("Batching for recurrent models must align with sets")
-				return
+				batchNext = false
+			} else if endBatch {
+				batchNext = true
 			}
 		}
 
@@ -346,21 +288,17 @@ func (net *Network) Train(args TrainArgs) {
 		if correct {
 			statusCorrect += 1.0
 		}
-		if len(d.Outputs) > 0 {
+		if len(d.Outputs) != 0 {
 			statusSize++
 		}
 
-		lastCost = cost
-		iteration++
+		net.iter++
 	}
 
 	// finish up before returning
 	{
 		if net.hasSavedChanges {
-			if err := net.AddWeights(); err != nil {
-				*args.Err = errors.Wrapf(err, "Failed to add weights to network post-training\n")
-				return
-			}
+			net.AddWeights()
 		}
 
 		if net.hasDelay {
@@ -368,56 +306,61 @@ func (net *Network) Train(args TrainArgs) {
 		}
 	}
 
-	return
+	return nil
 }
 
-// args.TestData, args.CostFunc, args.IsCorrect
-//
-// Information about arguments to Test can be found in TrainArgs
-// Will return: average cost; average fraction correct; any errors
-func (net *Network) Test(data DataSupplier, costFunc CostFunction, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
-	if net.hasDelay && !data.IsSequential() {
+func (net *Network) Test(data DataSupplier, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
+	var ok bool
+	var dataSeq Sequential
+	if dataSeq, ok = data.(Sequential); net.hasDelay && !ok {
 		return 0, 0, errors.Errorf("Network has delay but data is not sequential")
 	}
 
 	var avgCost, avgCorrect float64
-	var testSize int
+	var testSize int = 0
 
+	// may result in a superfluous flush
 	defer net.ClearDelays()
 
+	// done only refers to RNNs and DoneTesting waiting for SetEnded
+	var done bool
+
 	for {
-		d, err := data.Get()
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Failed to get sample #%d\n", testSize)
+		if data.DoneTesting(testSize) {
+			if !net.hasDelay {
+				break
+			}
+			done = true
 		}
 
-		if !d.fits(net) {
-			return 0, 0, errors.Errorf("Test sample #%d does not fit network dimensions\n", testSize)
-		}
-
-		outs, err := net.GetOutputs(d.Inputs)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Failed to get outputs of network with sample #%d\n", testSize)
-		}
-
-		cost, err := costFunc.Cost(outs, d.Outputs)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Failed to get cost of outputs with sample #%d\n", testSize)
-		}
-		avgCost += cost
-
-		if isCorrect(outs, d.Outputs) {
-			avgCorrect += 1
-		}
-
-		if data.SetEnded() {
+		if net.hasDelay && dataSeq.SetEnded(testSize) {
 			net.ClearDelays()
+			if done {
+				break
+			}
 		}
 
 		testSize++
 
-		if data.DoneTesting() {
-			break
+		d, err := data.Get(testSize)
+		if err != nil {
+			return 0, 0, errors.Wrapf(err, "Failed to get test sample %d\n", testSize)
+		} else if !d.Fits(net) {
+			return 0, 0, errors.Errorf("Test sample %d does not fit Network dimensions\n", testSize)
+		}
+
+		outs, err := net.GetOutputs(d.Inputs)
+		if err != nil {
+			return 0, 0, errors.Wrapf(err, "Failed to get Network outputs with test sample %d\n", testSize)
+		}
+
+		if len(d.Outputs) == 0 {
+			continue
+		}
+
+		avgCost += net.cf.Cost(outs, d.Outputs)
+		if isCorrect(outs, d.Outputs) {
+			avgCorrect += 1
 		}
 	}
 
@@ -430,87 +373,80 @@ func (net *Network) Test(data DataSupplier, costFunc CostFunction, isCorrect fun
 }
 
 type internalSupplier struct {
-	get         func() (Datum, error)
-	setEnded    func() bool
-	batchEnded  func() bool
-	doneTesting func() bool
+	get         func(int) (Datum, error)
+	batchEnded  func(int) bool
+	doneTesting func(int) bool
 }
 
-func (s internalSupplier) IsSequential() bool {
-	return s.setEnded != nil
+type internalSequential struct {
+	internalSupplier
+	setEnded func(int) bool
 }
 
-func (s internalSupplier) Get() (Datum, error) {
-	return s.get()
+func (s internalSupplier) Get(iter int) (Datum, error) {
+	return s.get(iter)
 }
 
-func (s internalSupplier) SetEnded() bool {
-	return s.setEnded()
+func (s internalSupplier) BatchEnded(iter int) bool {
+	return s.batchEnded(iter)
 }
 
-func (s internalSupplier) BatchEnded() bool {
-	return s.batchEnded()
+func (s internalSupplier) DoneTesting(iter int) bool {
+	return s.doneTesting(iter)
 }
 
-func (s internalSupplier) DoneTesting() bool {
-	return s.doneTesting()
+func (s internalSequential) SetEnded(iter int) bool {
+	return s.setEnded(iter)
 }
 
-// dataset should either be a slice of [][]float64 (where [0] is inputs,
-// [1] is outputs), or a slice of Datum
+// Data converts a 3D dataset of float64 to a DataSupplier, which can be used for
+// training or testing. dataset indexing is: [data index][inputs, outputs][values]
 //
-// for setEnded and batchEnded:
-// both are given an index in the provided data
-// both are called after the data at the specified index has been used
-//
-// setEnded can be set to nil if the data is not sequential
-func Data(dataset interface{}, setEnded, batchEnded func(int) bool) (DataSupplier, error) {
-	var l int
-	if reflect.ValueOf(dataset).Kind() != reflect.Slice {
-		return nil, errors.Errorf("dataset must be a compatible type (%T is not)", dataset)
-	} else if l = reflect.ValueOf(dataset).Len(); l == 0 {
-		return nil, errors.Errorf("dataset must have len > 0")
+// N.B.: Data does not check if the data fit a certain network; that will be done
+// during training/testing
+func Data(dataset [][][]float64, batchSize int) (DataSupplier, error) {
+	d := dataset
+	if len(d) == 0 {
+		return nil, errors.Errorf("dataset has no data (len == 0)")
+	} else if batchSize < 1 {
+		return nil, errors.Errorf("batch size must be >= 1 (%d)", batchSize)
 	}
 
-	var get func(int) Datum
-
-	if d, ok := dataset.([]Datum); ok {
-		get = func(index int) Datum {
-			return d[index]
-		}
-	} else if d, ok := dataset.([][][]float64); ok {
-		get = func(index int) Datum {
-			return Datum{d[index][0], d[index][1]}
-		}
-	} else {
-		return nil, errors.Errorf("dataset is not of a compatible type (%T)", dataset)
-	}
-
-	var is internalSupplier
-
-	var index int
-	is.get = func() (Datum, error) {
-		d := get(index)
-		index++
-		if index >= l {
-			index = 0
-		}
-		return d, nil
-	}
-
-	if setEnded != nil {
-		is.setEnded = func() bool {
-			return setEnded(index)
+	// check we won't get indexes out of bounds
+	for i := range d {
+		if len(d[i]) < 2 {
+			return nil, errors.Errorf("dataset lacks required data at index %d (len([%d]) < 2)", i, i)
 		}
 	}
 
-	is.batchEnded = func() bool {
-		return batchEnded(index)
-	}
-
-	is.doneTesting = func() bool {
-		return index == 0
+	is := internalSupplier{
+		get: func(iter int) (Datum, error) {
+			i := iter % len(dataset)
+			return Datum{d[i][0], d[i][1]}, nil
+		},
+		batchEnded:  EndEvery(batchSize),
+		doneTesting: EndEvery(len(dataset)),
 	}
 
 	return is, nil
+}
+
+// SeqData converts a 3D dataset of float64 to a DataSupplier that is also
+// Sequential. SeqData runs Data before attaching an additional method to satisfy
+// Sequential, so arguments must follow the same format.
+func SeqData(dataset [][][]float64, batchSize, setSize int) (DataSupplier, error) {
+	if setSize < 1 {
+		return nil, errors.Errorf("setSize must be >= 1 (%d)", setSize)
+	}
+
+	ds, err := Data(dataset, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	is, _ := ds.(internalSupplier)
+
+	return internalSequential{
+		internalSupplier: is,
+		setEnded:         EndEvery(setSize),
+	}, nil
 }

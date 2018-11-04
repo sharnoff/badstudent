@@ -4,7 +4,7 @@ import bs "github.com/sharnoff/badstudent"
 
 func init() {
 	list := map[string]func() bs.Optimizer{
-		"SGD": func() bs.Optimizer { return GradientDescent() },
+		SGD().TypeString(): func() bs.Optimizer { return SGD() },
 	}
 
 	for s, f := range list {
@@ -14,5 +14,5 @@ func init() {
 		}
 	}
 
-	bs.SetDefaultOptimizer(func() bs.Optimizer { return GradientDescent() })
+	bs.SetDefaultOptimizer(list[SGD().TypeString()])
 }

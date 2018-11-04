@@ -1,5 +1,7 @@
 package badstudent
 
+// io currently does not support saving or loading hyperparameters
+
 import (
 	"encoding/json"
 	"github.com/pkg/errors"
@@ -7,27 +9,35 @@ import (
 	"strconv"
 )
 
+// Go 2.0, can you arrive any sooner?
 var ops map[string]func() Operator
 var opts map[string]func() Optimizer
+var cfs map[string]func() CostFunction
+var hps map[string]func() HyperParameter
 
 func init() {
 	ops = make(map[string]func() Operator)
 	opts = make(map[string]func() Optimizer)
+	cfs = make(map[string]func() CostFunction)
+	hps = make(map[string]func() HyperParameter)
 }
 
-// RegisterOperator updates internals so that Load() will recognize the
-// Operator. Returns error if `name` is already present.
+// RegisterOperator updates internals so that Load() will recognize the Operator.
+// Returns error if `name` is already present or if the provided Operator is
+// invalid: i.e. is neither Elementwise nor Layer.
 func RegisterOperator(name string, f func() Operator) error {
 	if _, ok := ops[name]; ok {
 		return errors.Errorf("Name %s has already been registered", name)
+	} else if !isValid(f()) {
+		return errors.Errorf("Function does not provide valid operators (neither Layer nor Elementwise)")
 	}
 
 	ops[name] = f
 	return nil
 }
 
-// RegisterOptimizer updates internals so that Load() will recognize the
-// Optimizer. Returns error if `name` is already present.
+// RegisterOptimizer updates internals so that Load() will recognize the Optimizer.
+// Returns error if `name` is already present.
 func RegisterOptimizer(name string, f func() Optimizer) error {
 	if _, ok := opts[name]; ok {
 		return errors.Errorf("Name %s has already been registered", name)
@@ -37,16 +47,41 @@ func RegisterOptimizer(name string, f func() Optimizer) error {
 	return nil
 }
 
+// RegisterCostFunction updates internals so that Load() will recognize the
+// CostFunction. Returns error if `name` is already present.
+func RegisterCostFunction(name string, f func() CostFunction) error {
+	if _, ok := cfs[name]; ok {
+		return errors.Errorf("Name %s has already been registered", name)
+	}
+
+	cfs[name] = f
+	return nil
+}
+
+// RegisterHyperParameter updates internals so that Load() will recognize the
+// HyperParameter. Returns error if `name` is already present.
+func RegisterHyperParameter(name string, f func() HyperParameter) error {
+	if _, ok := hps[name]; ok {
+		return errors.Errorf("Name %s has already been registered", name)
+	}
+
+	hps[name] = f
+	return nil
+}
+
 type proxy_Network struct {
 	// the IDs of each of the Nodes in the outputs
 	OutputsID []int
 	NumNodes  int
+	CFType    string // the type-string of the cost function
 }
 
 type proxy_Node struct {
 	Size       int
 	Name       string
 	TypeString string
+	OptString  string            // usually nil
+	HPTypes    map[string]string // map of names to type-strings
 	InputsID   []int
 	Delay      int
 }
@@ -69,82 +104,111 @@ func idsToNodes(nodesByID []*Node, ids []int) []*Node {
 
 const (
 	main_file string = "main.net"
-	op_ext    string = "op"
+	typ_ext   string = "typ"
 	opt_ext   string = "opt"
+	hp_pref   string = "hp_"
 )
 
 func (net *Network) writeFile(dirPath string) error {
 	f, err := os.Create(dirPath + "/" + main_file)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create file %s in %s\n", main_file, dirPath)
+		return errors.Wrapf(err, "Failed to create file %q in %q\n", main_file, dirPath)
 	}
 
 	defer f.Close()
 
-	// convert the network to a format that can be written
-	var proxy proxy_Network
-	{
-		proxy = proxy_Network{
-			OutputsID: nodesToIDs(net.outputs.nodes),
-			NumNodes:  len(net.nodesByID),
-		}
+	p := proxy_Network{
+		OutputsID: nodesToIDs(net.outputs.nodes),
+		NumNodes:  len(net.nodesByID),
+		CFType:    net.cf.TypeString(),
 	}
 
 	enc := json.NewEncoder(f)
-	if err = enc.Encode(proxy); err != nil {
-		return errors.Wrapf(err, "Failed to encode Network proxy\n")
+	if err = enc.Encode(p); err != nil {
+		return errors.Wrapf(err, "Failed to write information to file %q in %q\n", main_file, dirPath)
 	}
 
 	return nil
 }
 
 func (n *Node) writeFile(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + strconv.Itoa(n.id) + ".node")
-	if err != nil {
-		return errors.Wrapf(err, "Failed to create a save file for Node %v (file %q in %s)\n", n, strconv.Itoa(n.id)+".node", dirPath)
+	path := dirPath + "/" + strconv.Itoa(n.id)
+
+	var typStr, optStr string
+	if n.typ != nil {
+		typStr = n.typ.TypeString()
+	}
+	if n.opt != nil {
+		optStr = n.opt.TypeString()
 	}
 
-	var ts string
-	if !n.IsInput() {
-		ts = n.typ.TypeString()
+	// map of name to type
+	hpTypes := make(map[string]string)
+	for name, hp := range n.hyperParams {
+		hpTypes[name] = hp.TypeString()
 	}
 
-	// convert the node to a format that can be written
-	proxy := proxy_Node{
+	p := proxy_Node{
 		Size:       n.Size(),
 		Name:       n.Name(),
-		TypeString: ts,
+		TypeString: typStr,
+		OptString:  optStr,
+		HPTypes:    hpTypes,
 		InputsID:   nodesToIDs(n.inputs.nodes),
 		Delay:      n.Delay(),
 	}
 
+	f, err := os.Create(path + ".node")
+	if err != nil {
+		return errors.Errorf("Failed to create save file (file %q in %q)", strconv.Itoa(n.id)+".node", dirPath)
+	}
+	defer f.Close()
+
 	enc := json.NewEncoder(f)
-	if err = enc.Encode(proxy); err != nil {
-		f.Close()
-		return errors.Wrapf(err, "Failed to encode prody for Node %v (id: %d)\n", n, n.id)
+	err = enc.Encode(p)
+
+	if err != nil {
+		return errors.Errorf("Failed to write information (file %q in %q)", strconv.Itoa(n.id)+".node", dirPath)
 	}
 
-	f.Close()
+	if n.typ != nil {
+		if st, ok := n.typ.(Storable); ok {
+			if err = st.Save(n, path+"/"+typ_ext); err != nil {
+				return errors.Wrapf(err, "Failed to save Operator\n")
+			}
+		}
+	}
 
-	// if n is an input, it won't have an operator
-	if !n.IsInput() {
-		if err = n.typ.Save(n, dirPath+"/"+strconv.Itoa(n.id)+"/"+op_ext); err != nil {
-			return errors.Wrapf(err, "Failed to save Operator for Node %v (id: %d)\n", n)
+	if n.opt != nil {
+		if st, ok := n.opt.(Storable); ok {
+			if err = st.Save(n, path+"/"+opt_ext); err != nil {
+				return errors.Wrapf(err, "Failed to save Optimizer\n")
+			}
+		}
+	}
+
+	for name, hp := range n.hyperParams {
+		if st, ok := hp.(Storable); ok {
+			if err = st.Save(n, path+"/"+hp_pref+name); err != nil {
+				return errors.Wrapf(err, "Failed to save HyperParameter (name: %s, type: %s)\n", name, hp.TypeString())
+			}
 		}
 	}
 
 	return nil
 }
 
-// Saves the Network, creating a directory (with permissions 0700) as the given path to contain it.
+// Save saves the Network to a given directory. overwrite indicates whether or not
+// to remove any other files that may already exist there to replace them. The
+// directory should not already exist unless overwrite is true.
 //
-// If overwrite is false, it will not overwrite any pre-existing directories - including the path given -
-// and will return error.
+// Save does not error cleanly. If it stops midway through writing the Network, it
+// will leave the files unfinished.
 func (net *Network) Save(dirPath string, overwrite bool) error {
 	// check if the folder already exists
 	if _, err := os.Stat(dirPath); err == nil {
 		if !overwrite {
-			return errors.Errorf("Directory %s already exists, and overwrite is not enabled", dirPath)
+			return errors.Errorf("Directory %s already exists, overwrite=false", dirPath)
 		}
 
 		if err := os.RemoveAll(dirPath); err != nil {
@@ -152,6 +216,7 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 		}
 	}
 
+	// '0700' indicates universal read/write permissions
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Wrapf(err, "Failed to make save directory\n")
 	}
@@ -169,91 +234,135 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 	return nil
 }
 
-// Loads the network from a version previously saved in a directory
-//
-// The provided path should be to the containing folder, the same as it would have been to save the network
-// 'types' and 'aux' should be maps of name of Node to their Operator (for types) and any extra information
-// necessary to reconstruct that Operator (aux)
-//
-// aux will be provided to Operator.Load()
 func Load(dirPath string) (*Network, error) {
 	// check if the folder exists
 	if _, err := os.Stat(dirPath); err != nil {
 		return nil, errors.Errorf("Containing directory does not exist")
 	}
 
-	main, err := os.Open(dirPath + "/" + main_file)
-	if err != nil {
-		return nil, errors.Errorf("Overview file does not exist")
-	}
-
-	net_proxy := new(proxy_Network)
+	// Load the main network
+	var pNet proxy_Network
 	{
-		dec := json.NewDecoder(main)
-		if err := dec.Decode(net_proxy); err != nil {
-			return nil, errors.Wrapf(err, "Error encountered while decoding overview file\n")
+		f, err := os.Open(dirPath + "/" + main_file)
+		if err != nil {
+			return nil, errors.Errorf("Failed to open Network overview (file %q in %q)", main_file, dirPath)
 		}
-		main.Close()
+
+		defer f.Close()
+
+		dec := json.NewDecoder(f)
+		if err = dec.Decode(&pNet); err != nil {
+			return nil, errors.Errorf("Failed to parse Network overview (file %q in %q)", main_file, dirPath)
+		}
 	}
 
 	net := new(Network)
+	pNodes := make([]proxy_Node, pNet.NumNodes)
 
-	typs := make([]Operator, net_proxy.NumNodes)
-	ins := make([][]int, net_proxy.NumNodes)
-	delays := make([]int, net_proxy.NumNodes)
-
-	for id := 0; id < net_proxy.NumNodes; id++ {
-
-		f, err := os.Open(dirPath + "/" + strconv.Itoa(id) + ".node")
+	// Load the Nodes, make placeholders
+	for id := 0; id < pNet.NumNodes; id++ {
+		path := dirPath + "/" + strconv.Itoa(id)
+		f, err := os.Open(path + ".node")
 		if err != nil {
-			return nil, errors.Wrapf(err, "File for node #%d does not exist\n", id)
+			return nil, errors.Errorf("Failed to open save for Node (id %d) (file %q in %q)",
+				id, strconv.Itoa(id)+".node", dirPath)
 		}
 
-		// proxy node
-		pn := new(proxy_Node)
-		{
+		if err = func() error {
+			defer f.Close()
+
 			dec := json.NewDecoder(f)
-			err = dec.Decode(pn)
-			f.Close()
-			if err != nil {
-				return nil, errors.Wrapf(err, "Error encountered while decoding file for Node %q (id %d)\n", pn.Name, id)
+			if err = dec.Decode(&pNodes[id]); err != nil {
+				return errors.Errorf("Failed to read save for Node (id %d) (file %q in %q)",
+					id, strconv.Itoa(id)+".node", dirPath)
 			}
+
+			return nil
+		}(); err != nil {
+			return nil, err
 		}
 
-		_, err = net.Placeholder(pn.Name, pn.Size)
-		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to add placeholder Node %q (id %d) to reconstructing Network\n", pn.Name, id)
-		}
-
-		ins[id] = pn.InputsID
-		delays[id] = pn.Delay
-
-		if len(ins[id]) != 0 {
-			t, ok := ops[pn.TypeString]
-			if !ok {
-				return nil, errors.Errorf("Unknown operator %q has not been registered", pn.TypeString)
-			}
-
-			typs[id] = t()
-			if err = typs[id].Load(dirPath + "/" + strconv.Itoa(id) + "/" + op_ext); err != nil {
-				return nil, errors.Wrapf(err, "Failed to load Operator for Node %q (id %d)\n", pn.Name, id)
-			}
+		net.Placeholder(pNodes[id].Name, pNodes[id].Size)
+		if net.err != nil {
+			return nil, errors.Wrapf(net.err, "Failed to add placeholder for Node %q (id %d) to reconstruct Network\n",
+				pNodes[id].Name, id)
 		}
 	}
 
+	// replace placeholders
 	for id, n := range net.nodesByID {
-		inputs := idsToNodes(net.nodesByID, ins[id])
+		inputs := idsToNodes(net.nodesByID, pNodes[id].InputsID)
 
-		n.Replace(typs[id], inputs...)
+		var typ Operator
+		var opt Optimizer
+		if len(inputs) > 0 {
+			if ops[pNodes[id].TypeString] == nil {
+				return nil, errors.Errorf("Operator type %q has not been registered", pNodes[id].TypeString)
+			}
 
-		if delays[id] != 0 {
-			n.SetDelay(delays[id])
+			typ = ops[pNodes[id].TypeString]()
+			if st, ok := typ.(Storable); ok {
+				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + typ_ext); err != nil {
+					return nil, errors.Wrapf(err, "Failed to Load Operator for Node %q (id %d)\n", pNodes[id].Name, id)
+				}
+			}
+
+			if _, ok := typ.(Adjustable); ok {
+				if opts[pNodes[id].OptString] == nil {
+					return nil, errors.Errorf("Optimizer type %q has not been registered", pNodes[id].OptString)
+				}
+
+				opt = opts[pNodes[id].OptString]()
+
+				if st, ok := opt.(Storable); ok {
+					if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + opt_ext); err != nil {
+						return nil, errors.Wrapf(err, "Failed to Load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
+					}
+				}
+			}
+		}
+
+		n.Replace(typ, inputs...)
+		if net.err != nil {
+			return nil, errors.Wrapf(net.err, "Failed to replace placeholder for Node %q (id %d) to reconstruct Network\n",
+				pNodes[id].Name, id)
+		}
+
+		if opt != nil {
+			n.Opt(opt)
+		}
+		if pNodes[id].Delay != 0 {
+			n.SetDelay(pNodes[id].Delay)
+		}
+
+		for name, ts := range pNodes[id].HPTypes {
+			if hps[ts] == nil {
+				return nil, errors.Errorf("HyperParameter type %q has not been registered", ts)
+			}
+
+			hp := hps[ts]()
+
+			if st, ok := hp.(Storable); ok {
+				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + hp_pref + name); err != nil {
+					return nil, errors.Wrapf(err, "Failed to load HyperParameter %q for Node %q (id %d)\n", ts, n.name, id)
+				}
+			}
+
+			n.AddHP(name, hp)
+			if net.err != nil {
+				return nil, errors.Wrapf(net.err, "Failed to add HyperParameter %q to Node %q (id %d)\n", ts, n.name, id)
+			}
 		}
 	}
 
-	// set the outputs to the network
-	if err := net.SetOutputs(idsToNodes(net.nodesByID, net_proxy.OutputsID)...); err != nil {
-		return nil, errors.Wrapf(err, "Could not set outputs\n")
+	if cfs[pNet.CFType] == nil {
+		return nil, errors.Errorf("CostFunction type %q has not been registered")
+	}
+
+	cf := cfs[pNet.CFType]()
+
+	if err := net.finalize(true, cf, idsToNodes(net.nodesByID, pNet.OutputsID)...); err != nil {
+		return nil, errors.Wrapf(err, "Failed to finalize Network\n")
 	}
 
 	return net, nil

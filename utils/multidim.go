@@ -14,9 +14,9 @@ type MultiDim struct {
 	Dims []int
 
 	// the number of values encapsulated by a 'set' of this dimension
-	// -- size[0] = dims[0]; size[end] = len(base)
-	// size will be initialized by the constructor -- should not be provided
-	Size []int
+	// -- sizes[0] = dims[0]; sizes[end] = len(base)
+	// sizes will be initialized by the constructor -- should not be provided
+	Sizes []int
 }
 
 // Creates a new MultiDim slice wrapper
@@ -26,14 +26,14 @@ type MultiDim struct {
 // accessed as: [x, y, z]
 func NewMultiDim(dims []int) *MultiDim {
 	m := &MultiDim{
-		Dims: dims,
-		Size: make([]int, len(dims)),
+		Dims:  dims,
+		Sizes: make([]int, len(dims)),
 	}
 
-	m.Size[0] = m.Dims[0]
+	m.Sizes[0] = m.Dims[0]
 
-	for i := 1; i < len(m.Size); i++ {
-		m.Size[i] = m.Size[i-1] * m.Dims[i]
+	for i := 1; i < len(m.Sizes); i++ {
+		m.Sizes[i] = m.Sizes[i-1] * m.Dims[i]
 	}
 
 	return m
@@ -45,8 +45,8 @@ func NewMultiDim(dims []int) *MultiDim {
 // the given point should have the dimensions in the same order as they were originally given
 func (m *MultiDim) Index(point []int) int {
 	index := point[0]
-	for i := 1; i < len(m.Size); i++ {
-		index += point[i] * m.Size[i-1]
+	for i := 1; i < len(m.Sizes); i++ {
+		index += point[i] * m.Sizes[i-1]
 	}
 
 	return index
@@ -58,12 +58,20 @@ func (m *MultiDim) Index(point []int) int {
 func (m *MultiDim) Point(index int) []int {
 	p := make([]int, len(m.Dims))
 	for i := len(p) - 1; i >= 1; i-- { // doesn't go to 0
-		p[i] = index / m.Size[i-1]
-		index = index % m.Size[i-1]
+		p[i] = index / m.Sizes[i-1]
+		index = index % m.Sizes[i-1]
 	}
 
 	p[0] = index
 	return p
+}
+
+func (m *MultiDim) Size() int {
+	return m.Sizes[len(m.Sizes)-1]
+}
+
+func (m *MultiDim) Dim(d int) int {
+	return m.Dims[d]
 }
 
 // Increments the given point by 1

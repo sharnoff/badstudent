@@ -1,5 +1,5 @@
 [![forthebadge](https://forthebadge.com/images/badges/uses-badges.svg)](https://forthebadge.com)
-[![forthebadge](https://forthebadge.com/images/badges/made-with-go.svg)](https://forthebadge.com)
+[![GoDoc](https://godoc.org/github.com/sharnoff/badstudent?status.png)](http://godoc.org/github.com/sharnoff/badstudent)
 [![forthebadge](https://forthebadge.com/images/badges/60-percent-of-the-time-works-every-time.svg)](https://forthebadge.com)
 
 # badstudent
@@ -8,7 +8,8 @@
 
 badstudent is a general-purpose machine-learning package written in and for go. It's not designed to be super
 effective - I'm just using it as a way to learn more about the lower-level parts of neural networks. It
-excels at providing flexibility to the user - including multiple-time-step delay and free-form layer architecture.
+excels at providing flexibility to the user - including multiple-time-step delay, free-form architecture, and
+easily definable layers.
 
 This framework has been a solo project, but it's perfectly usable for other people. (There are better
 libraries out there, though)

@@ -9,8 +9,8 @@ import (
 
 type add int8
 
-// Adds its inputs. All inputs must have the same size as node.
-// Can loop on itself to make LSTM
+// Add returns an elementwise addition operator that implements badstudent.Operator.
+// All inputs to its Node must have size equal to the Node.
 func Add() add {
 	return add(0)
 }
@@ -19,31 +19,17 @@ func (t add) TypeString() string {
 	return "add"
 }
 
-func (t add) Init(n *bs.Node) error {
-	if n.NumInputs() == 0 {
-		return errors.Errorf("Must have >= 1 input")
-	}
-
+func (t add) Finalize(n *bs.Node) error {
 	for i := 0; i < n.NumInputNodes(); i++ {
 		if n.InputSize(i) != n.Size() {
-			return errors.Errorf("Size of input %d is not equal to node (%d != %d)", i, n.InputSize(i), n.Size())
+			return errors.Errorf("All inputs must have size equal to node (n.InputSize(%d) (%d) != %d)", i, n.InputSize(i), n.Size())
 		}
 	}
 
 	return nil
 }
 
-// does not save anything
-func (t add) Save(n *bs.Node, dirPath string) error {
-	return nil
-}
-
-// does not save anything
-func (t add) Load(dirPath string) error {
-	return nil
-}
-
-func (t add) Evaluate(n *bs.Node, values []float64) error {
+func (t add) Evaluate(n *bs.Node, values []float64) {
 	inputs := n.CopyOfInputs()
 
 	f := func(i int) {
@@ -53,53 +39,21 @@ func (t add) Evaluate(n *bs.Node, values []float64) error {
 		}
 	}
 
-	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
-	threadsPerCPU := 1
-
+	// just random constants. Have not been optimized
+	opsPerThread, threadsPerCPU := runtime.NumCPU()*2, 1
 	utils.MultiThread(0, len(values), f, opsPerThread, threadsPerCPU)
-
-	return nil
 }
 
-func (t add) Value(n *bs.Node, index int) float64 {
+func (t add) InputDeltas(n *bs.Node) []float64 {
+	ds := make([]float64, n.NumInputs())
 
-	v := n.InputValue(index)
-	for in := 1; in < n.NumInputNodes(); in++ {
-		v += n.InputValue(in*n.Size() + index)
-	}
-
-	return v
-}
-
-func (t add) InputDeltas(n *bs.Node, add func(int, float64), start, end int) error {
 	f := func(i int) {
-		add(i-start, n.Delta(i%n.Size()))
+		ds[i] = n.Delta(i % n.Size())
 	}
 
-	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
-	threadsPerCPU := 1
+	// just random constants. Have not been optimized
+	opsPerThread, threadsPerCPU := runtime.NumCPU()*2, 1
+	utils.MultiThread(0, n.Size(), f, opsPerThread, threadsPerCPU)
 
-	utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
-
-	return nil
-}
-
-func (t add) CanBeAdjusted(n *bs.Node) bool {
-	return false
-}
-
-func (t add) NeedsValues(n *bs.Node) bool {
-	return false
-}
-
-func (t add) NeedsInputs(n *bs.Node) bool {
-	return false
-}
-
-func (t add) Adjust(n *bs.Node, learningRate float64, saveChanges bool) error {
-	return nil
-}
-
-func (t add) AddWeights(n *bs.Node) error {
-	return nil
+	return ds
 }

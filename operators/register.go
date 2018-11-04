@@ -1,21 +1,22 @@
 package operators
 
 import (
+	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
-	"github.com/sharnoff/badstudent/optimizers"
+	"math"
 )
 
 func init() {
 	list := map[string]func() bs.Operator{
-		"add":         func() bs.Operator { return Add() },
-		"convolution": func() bs.Operator { return Convolution(nil, optimizers.GradientDescent()) },
-		"identity":    func() bs.Operator { return Identity() },
-		"logistic":    func() bs.Operator { return Logistic() },
-		"multiply":    func() bs.Operator { return Mult() },
-		"neurons":     func() bs.Operator { return Neurons(optimizers.GradientDescent()) },
-		"avg-pool":    func() bs.Operator { return AvgPool(nil) },
-		"max-pool":    func() bs.Operator { return MaxPool(nil) },
-		"tanh":        func() bs.Operator { return Tanh() },
+		Identity().TypeString(): func() bs.Operator { return Identity() },
+		Logistic().TypeString(): func() bs.Operator { return Logistic() },
+		AvgPool().TypeString():  func() bs.Operator { return AvgPool() },
+		MaxPool().TypeString():  func() bs.Operator { return MaxPool() },
+		Neurons().TypeString():  func() bs.Operator { return Neurons() },
+		Conv().TypeString():     func() bs.Operator { return Conv() },
+		Mult().TypeString():     func() bs.Operator { return Mult() },
+		Tanh().TypeString():     func() bs.Operator { return Tanh() },
+		Add().TypeString():      func() bs.Operator { return Add() },
 	}
 
 	for s, f := range list {
@@ -23,5 +24,33 @@ func init() {
 		if err != nil {
 			panic(err.Error())
 		}
+	}
+
+	defaultValue = map[string]float64{
+		"neurons-bias": 1,
+		"pool-padding": 0,
+		"conv-bias":    1,
+		"conv-padding": 0,
+	}
+}
+
+var defaultValue map[string]float64
+
+// SetDefault sets the default values for certain Operators. The values that can be
+// set are: "neurons-bias", "pool-padding", "conv-bias", and "conv-padding".
+func SetDefault(name string, value float64) error {
+	if _, ok := defaultValue[name]; !ok {
+		return errors.Errorf("Value with name %q does not exist", name)
+	} else if math.IsNaN(value) || math.IsInf(value, 0) {
+		return errors.Errorf("Value is invalid (%v)", value)
+	}
+
+	return nil
+}
+
+// SetDefault_Lazy simply calls SetDefault, but panics instead of returning an error
+func SetDefault_Lazy(name string, value float64) {
+	if err := SetDefault(name, value); err != nil {
+		panic(err)
 	}
 }

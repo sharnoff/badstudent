@@ -1,9 +1,54 @@
 package badstudent
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
+
+func format(fs ...float64) (str string) {
+	for i := range fs {
+		if fs[i] != 0 {
+			str += fmt.Sprintf("%v", fs[i])
+		}
+		str += ", "
+	}
+
+	return
+}
+
+// PrintResult returns a function that prints the results of training, in addition
+// to a final function to be called once the training has finished.
+//
+// It prints: Iteration, Status Cost, Status Percent, Test Cost, Test Percent
+//
+// The final results will not be printed unless the secondary function is called.
+func PrintResult() (func(Result), func()) {
+	// statusCost, statusPercent, testCost, testPercent
+	results := make([]float64, 4)
+	previousIteration := -1
+
+	return func(r Result) {
+			if r.Iteration > previousIteration && previousIteration >= 0 {
+				fmt.Printf("%d, %s\n", previousIteration, format(results...))
+
+				results = make([]float64, len(results))
+			}
+
+			if r.IsTest {
+				results[2] = r.Cost
+				results[3] = r.Correct * 100
+			} else {
+				results[0] = r.Cost
+				results[1] = r.Correct * 100
+			}
+
+			previousIteration = r.Iteration
+		},
+		func() {
+			fmt.Printf("%d, %s\n", previousIteration, format(results...))
+		}
+}
 
 // CorrectRound is the default 'IsCorrect' function to be provided to TrainArgs
 //
@@ -73,33 +118,20 @@ func HighestIndex(sl []float64) int {
 
 // Acts as a TrainArgs.RunCondition
 // Tells the network to run for a specified number of individual data corrected
-func TrainUntil(maxIterations int) func(int, float64) bool {
-	return func(iteration int, lastErr float64) bool {
+func TrainUntil(maxIterations int) func(int) bool {
+	return func(iteration int) bool {
 		return iteration < maxIterations
 	}
 }
 
-// Acts as a TrainArgs.LearningRate
-// Always returns the provided 'learningRate'
-func ConstantRate(learningRate float64) func(int, float64) float64 {
-	return func(iteration int, lastErr float64) float64 {
-		return learningRate
-	}
-}
-
-// Returns a function that satisfies multiple fields in TrainArgs
-//
-// returns (iteration % frequency == 0)
+// Every returns a function that returns (iteration % frequency == 0)
 func Every(frequency int) func(int) bool {
 	return func(iteration int) bool {
 		return iteration%frequency == 0
 	}
 }
 
-// returns (iteration % frequency == frequency - 1)
-//
-// Works for the TrainArgs fields that should return true only at the end
-// of a range
+// EndEvery returns a function that returns (iteration % frequency == frequency - 1)
 func EndEvery(frequency int) func(int) bool {
 	return func(iteration int) bool {
 		return iteration%frequency == frequency-1

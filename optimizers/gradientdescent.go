@@ -6,36 +6,34 @@ import (
 	"runtime"
 )
 
-const threadSizeMultiplier int = 2
+type sgd int8
 
-type gradientdescent int8
-
-func GradientDescent() gradientdescent {
-	return gradientdescent(0)
+// SGD returns the gradient descent Optimzier. SGD requires the hyperparameter
+// "learning-rate" > 0, and nothing else.
+//
+// The result of SGD implements badstudent.Optimzier, and is the default default
+// Optimizer at startup, until something else is assigned.
+func SGD() sgd {
+	return sgd(0)
 }
 
-func (g gradientdescent) TypeString() string {
+func (s sgd) TypeString() string {
 	return "SGD"
 }
 
-func (g gradientdescent) Run(n *bs.Node, size int, grad func(int) float64, add func(int, float64), learningRate float64) error {
-
-	threadsPerCPU := 1
-	opsPerThread := runtime.NumCPU()
+func (s sgd) Run(n *bs.Node, a bs.Adjustable, ch []float64) {
+	η := n.HP("learning-rate")
 
 	f := func(i int) {
-		add(i, -1*learningRate*grad(i))
+		ch[i] += -1 * η * a.Grad(n, i)
 	}
 
-	utils.MultiThread(0, size, f, opsPerThread, threadsPerCPU)
-
-	return nil
+	// just arbitrary constants
+	threadsPerCPU := 1
+	opsPerThread := runtime.NumCPU() * 2
+	utils.MultiThread(0, len(ch), f, opsPerThread, threadsPerCPU)
 }
 
-func (g gradientdescent) Save(n *bs.Node, dirPath string) error {
-	return nil
-}
-
-func (g gradientdescent) Load(dirPath string) error {
-	return nil
+func (s sgd) Needs() []string {
+	return []string{"learning-rate"}
 }

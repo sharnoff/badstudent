@@ -5,258 +5,185 @@ import (
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
 
-	"math/rand"
-
 	"encoding/json"
 	"os"
-
-	"fmt"
 )
 
 type neurons struct {
-	opt bs.Optimizer
+	// weights is organized in (n = number of values) sets of:
+	// input, input, ... input, bias
+	//
+	// cannot be called 'Weights' because it needs method Weights
+	Ws []float64
 
-	Weights [][]float64
-	Biases  []float64
+	// always either 0 or 1. It is represented as an integer to make the math easier
+	// and to reduce the number of necessary conditionals
+	NumBiases int
 
-	WeightChanges [][]float64
-	BiasChanges   []float64
+	// the value multiplied by bias
+	Bias float64
 }
 
-// Neurons returns a basic layer of perceptrons with biases
-func Neurons(opt bs.Optimizer) *neurons {
+// this is really either zero or 1
+const default_numBiases int = 1
+
+// Neurons returns a basic layer of perceptrons with biases that implements
+// badstudent.Operator.
+//
+// The value of the biases can be set by BiasValue, and the number of biases can be
+// set by Biases.
+func Neurons() *neurons {
 	n := new(neurons)
-	n.opt = opt
+	n.Bias = defaultValue["neurons-bias"]
+	n.NumBiases = default_numBiases
 	return n
 }
 
-const bias_value float64 = 1
+// Dense is a substitute for Neurons
+func Dense() *neurons {
+	return Neurons()
+}
 
-func (n *neurons) TypeString() string {
+// FullyConnected is a substitute for Neurons
+func FullyConnected() *neurons {
+	return Neurons()
+}
+
+// ***************************************************
+// Customization Functions
+// ***************************************************
+
+// NoBiases changes the neurons to not have any biases.
+func (n *neurons) NoBiases() *neurons {
+	n.NumBiases = 0
+	return n
+}
+
+// WithBiases changes the neurons to have biases, if they did not already
+func (n *neurons) WithBiases() *neurons {
+	n.NumBiases = 1
+	return n
+}
+
+// BiasValue sets the value multiplied by the biases. The default value can be set
+// by SetDefault("neurons-bias")
+func (n *neurons) BiasValue(b float64) *neurons {
+	n.Bias = b
+	return n
+}
+
+// ***************************************************
+// Helper Functions
+// ***************************************************
+
+// this makes it a little harder to optimize, but it'll all be done with matrices
+// eventually, so it doesn't really matter
+func (t *neurons) weight(n *bs.Node, in, val int) float64 {
+	return t.Ws[val*(n.NumInputs()+t.NumBiases)+in]
+}
+
+// ***************************************************
+// Interface-required functions
+// ***************************************************
+
+func (t *neurons) TypeString() string {
 	return "neurons"
 }
 
-func (n *neurons) Init(nd *bs.Node) error {
+func (t *neurons) Finalize(n *bs.Node) error {
+	// if it's been loaded from a file...
+	if l := len(t.Ws); l != 0 {
+		if l != (n.NumInputs()+t.NumBiases)*n.Size() {
+			return errors.Errorf("Loaded number of weights and i/o dimensions do not match")
+		}
 
-	if nd.NumInputs() == 0 {
-		return errors.Errorf("Neurons must have inputs (NumInputs() == %d)", nd.NumInputs())
-	}
-
-	// if it's been loaded from a file, don't do anything
-	if len(n.Weights) != 0 {
 		return nil
 	}
 
-	n.Weights = make([][]float64, nd.Size())
-	n.WeightChanges = make([][]float64, nd.Size())
-	n.Biases = make([]float64, nd.Size())
-	n.BiasChanges = make([]float64, nd.Size())
-
-	for v := range n.Weights {
-		n.Weights[v] = make([]float64, nd.NumInputs())
-		n.WeightChanges[v] = make([]float64, nd.NumInputs())
-		for i := range n.Weights[v] {
-			n.Weights[v][i] = (2*rand.Float64() - 1) / float64(nd.NumInputs())
-		}
-	}
-
-	if nd.NumInputs() != 0 {
-		for v := range n.Biases {
-			n.Biases[v] = (2*rand.Float64() - 1) / float64(nd.NumInputs())
-		}
-	}
-
+	t.Ws = make([]float64, (n.NumInputs()+t.NumBiases)*n.Size())
 	return nil
 }
 
-// encodes 'n' via JSON into 'weights.txt'
-func (n *neurons) Save(nd *bs.Node, dirPath string) error {
+// encodes via JSON into 'weights.txt'
+func (t *neurons) Save(n *bs.Node, dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Couldn't save operator: failed to create directory to house save file")
+		return errors.Errorf("Failed to create save directory")
 	}
 
 	f, err := os.Create(dirPath + "/weights.txt")
 	if err != nil {
-		return errors.Errorf("Couldn't save operator: failed to create file 'weights.txt'")
+		return errors.Errorf("Failed to create file %q in %q", "weights.txt", dirPath)
 	}
+	defer f.Close()
 
-	finishedSafely := false
-	defer func() {
-		if !finishedSafely {
-			f.Close()
-		}
-	}()
-
-	{
-		enc := json.NewEncoder(f)
-		if err = enc.Encode(n); err != nil {
-			return errors.Wrapf(err, "Couldn't save operator: failed to encode JSON to file\n")
-		}
-		finishedSafely = true
-		f.Close()
-	}
-
-	if err = n.opt.Save(nd, dirPath+"/opt"); err != nil {
-		return errors.Wrapf(err, "Couldn't save optimizer after saving operator")
+	enc := json.NewEncoder(f)
+	if err = enc.Encode(t); err != nil {
+		return errors.Errorf("Failed to encode JSON to file %q in %q", "weights.txt", dirPath)
 	}
 
 	return nil
 }
 
 // decodes JSON from 'weights.txt'
-func (n *neurons) Load(dirPath string) error {
-
+func (t *neurons) Load(dirPath string) error {
 	f, err := os.Open(dirPath + "/weights.txt")
 	if err != nil {
-		fmt.Println(dirPath, "+", "/weights.txt")
-		return errors.Errorf("Couldn't load operator: could not open file 'weights.txt'")
+		return errors.Errorf("Failed to open file %q in %q", "weights.txt", dirPath)
 	}
+	defer f.Close()
 
-	finishedSafely := false
-	defer func() {
-		if !finishedSafely {
-			f.Close()
-		}
-	}()
-
-	{
-		dec := json.NewDecoder(f)
-		if err = dec.Decode(n); err != nil {
-			return errors.Wrapf(err, "Couldn't load operator: failed to decode JSON from file\n")
-		}
-		finishedSafely = true
-		f.Close()
-	}
-
-	if err = n.opt.Load(dirPath + "/opt"); err != nil {
-		return errors.Wrapf(err, "Couldn't load optimizer after loading operator\n")
+	dec := json.NewDecoder(f)
+	if err = dec.Decode(t); err != nil {
+		return errors.Errorf("Failed to decode JSON from file %q in %q", "weights.txt", dirPath)
 	}
 
 	return nil
 }
 
-func (n *neurons) Evaluate(nd *bs.Node, values []float64) error {
-
-	inputs := nd.CopyOfInputs()
-	calculateValue := func(i int) {
+func (t *neurons) Evaluate(n *bs.Node, values []float64) {
+	inputs := n.CopyOfInputs()
+	f := func(v int) {
 		var sum float64
 		for in := range inputs {
-			sum += n.Weights[i][in] * inputs[in]
+			sum += t.weight(n, in, v) * inputs[in]
 		}
 
-		values[i] = sum + (n.Biases[i] * bias_value)
+		if t.NumBiases != 0 {
+			sum += t.Bias * t.weight(n, n.NumInputs(), v)
+		}
+
+		values[v] = sum
 	}
 
 	opsPerThread, threadsPerCPU := 1, 1
-	utils.MultiThread(0, len(values), calculateValue, opsPerThread, threadsPerCPU)
-
-	return nil
+	utils.MultiThread(0, len(values), f, opsPerThread, threadsPerCPU)
 }
 
-func (n *neurons) Value(nd *bs.Node, index int) float64 {
-	var sum float64
-	var in int
-	for inv := range nd.InputIterator() {
-		sum += n.Weights[index][in] * inv
-		in++
-	}
+func (t *neurons) InputDeltas(n *bs.Node) []float64 {
+	ds := make([]float64, n.NumInputs())
 
-	return sum + (n.Biases[index] * bias_value)
-}
-
-func (n *neurons) InputDeltas(nd *bs.Node, add func(int, float64), start, end int) error {
-
-	sendDelta := func(i int) {
-		var sum float64
-		for v := 0; v < nd.Size(); v++ {
-			sum += nd.Delta(v) * n.Weights[v][i]
+	f := func(in int) {
+		for v := 0; v < n.Size(); v++ {
+			ds[in] += n.Delta(v) * t.weight(n, in, v)
 		}
-
-		add(i-start, sum)
 	}
 
 	opsPerThread, threadsPerCPU := 1, 1
+	utils.MultiThread(0, n.NumInputs(), f, opsPerThread, threadsPerCPU)
 
-	utils.MultiThread(start, end, sendDelta, opsPerThread, threadsPerCPU)
-
-	return nil
+	return ds
 }
 
-func (n *neurons) CanBeAdjusted(nd *bs.Node) bool {
-	return true
+func (t *neurons) Grad(n *bs.Node, index int) float64 {
+	in := index % (n.NumInputs() + t.NumBiases)
+	v := (index - in) / (n.NumInputs() + t.NumBiases)
+	if in < n.NumInputs() {
+		return n.InputValue(in) * n.Delta(v)
+	} else {
+		return t.Bias * n.Delta(v)
+	}
 }
 
-func (n *neurons) NeedsValues(nd *bs.Node) bool {
-	return false
-}
-
-func (n *neurons) NeedsInputs(nd *bs.Node) bool {
-	return true
-}
-
-func (n *neurons) Adjust(nd *bs.Node, learningRate float64, saveChanges bool) error {
-	inputs := nd.CopyOfInputs()
-
-	if len(inputs) == 0 {
-		return nil
-	}
-
-	targetWeights := n.WeightChanges
-	targetBiases := n.BiasChanges
-	if !saveChanges {
-		targetWeights = n.Weights
-		targetBiases = n.Biases
-	}
-
-	// first run on weights, then biases
-	{
-		grad := func(index int) float64 {
-			in := index % len(inputs)
-			v := (index - in) / len(inputs)
-
-			return inputs[in] * nd.Delta(v)
-		}
-
-		add := func(index int, addend float64) {
-			in := index % len(inputs)
-			v := (index - in) / len(inputs)
-
-			targetWeights[v][in] += addend
-		}
-
-		if err := n.opt.Run(nd, len(inputs)*nd.Size(), grad, add, learningRate); err != nil {
-			return errors.Wrapf(err, "Couldn't adjust node %v, running optimizer on weights failed\n", nd)
-		}
-	}
-
-	// now run on biases
-	{
-		grad := func(index int) float64 {
-			return bias_value * nd.Delta(index)
-		}
-
-		add := func(index int, addend float64) {
-			targetBiases[index] += addend
-		}
-
-		if err := n.opt.Run(nd, nd.Size(), grad, add, learningRate); err != nil {
-			return errors.Wrapf(err, "Couldn't adjust node %v, running optimizer on biases failed\n", nd)
-		}
-	}
-
-	return nil
-}
-
-func (n *neurons) AddWeights(nd *bs.Node) error {
-	for v := range n.Weights {
-		for in := range n.Weights[v] {
-			n.Weights[v][in] += n.WeightChanges[v][in]
-		}
-		n.Biases[v] += n.BiasChanges[v]
-
-		n.WeightChanges[v] = make([]float64, len(n.Weights[v]))
-	}
-	n.BiasChanges = make([]float64, len(n.Biases))
-
-	return nil
+func (t *neurons) Weights() []float64 {
+	return t.Ws
 }

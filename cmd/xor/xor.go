@@ -2,6 +2,9 @@ package main
 
 import (
 	bs "github.com/sharnoff/badstudent"
+	"github.com/sharnoff/badstudent/costfuncs"
+	"github.com/sharnoff/badstudent/hyperparams"
+	_ "github.com/sharnoff/badstudent/initializers"
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/optimizers"
 
@@ -9,42 +12,31 @@ import (
 	"time"
 )
 
-func format(fs ...float64) (str string) {
-	for i := range fs {
-		if fs[i] != 0 {
-			str += fmt.Sprintf("%v", fs[i])
-		}
-		str += ", "
-	}
-
-	return
-}
-
 const (
 	statusFrequency int = 100
 	testFrequency   int = 1000
 
 	// main hyperparameters
-	learningRate  float64 = 0.2
-	batchSize     int     = 4
-	maxIterations int     = 100000
+	learningRate  float64 = 0.1
+	batchSize     int     = 1
+	maxIterations int     = 10000
 
 	// where to save/load the network
 	path string = "xor save"
 )
 
 func train(net *bs.Network, dataset [][][]float64) {
-	trainData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(batchSize))
+	trainData, err := bs.SeqData(dataset, batchSize, len(dataset))
 	if err != nil {
 		panic(err.Error())
 	}
 
-	testData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(len(dataset)))
+	testData, err := bs.SeqData(dataset, batchSize, len(dataset))
 	if err != nil {
 		panic(err.Error())
 	}
 
-	res := make(chan bs.Result)
+	up, final := bs.PrintResult()
 
 	args := bs.TrainArgs{
 		TrainData:    trainData,
@@ -52,57 +44,30 @@ func train(net *bs.Network, dataset [][][]float64) {
 		ShouldTest:   bs.EndEvery(testFrequency),
 		SendStatus:   bs.Every(statusFrequency),
 		RunCondition: bs.TrainUntil(maxIterations),
-		LearningRate: bs.ConstantRate(learningRate),
 		// IsCorrect: bs.CorrectRound,
-		// CostFunc:  bs.SquaredError(false),
-		Results: res,
-		Err:     &err,
+		Update: up,
 	}
 
 	fmt.Println("Starting training...")
 	startTime := time.Now()
-	go net.Train(args)
+
 	// fmt.Println("Iteration, Status Cost, Status Percent Correct, Test Cost, Test Percent Correct")
-
-	// statusCost, statusPercent, testCost, testPercent
-	results := make([]float64, 4)
-	previousIteration := -1
-
-	for r := range res {
-
-		if r.Iteration > previousIteration && previousIteration >= 0 {
-			// fmt.Printf("%d, %s\n", previousIteration, format(results...))
-
-			results = make([]float64, len(results))
-		}
-
-		if r.IsTest {
-			results[2] = r.Cost
-			results[3] = r.Correct * 100
-		} else {
-			results[0] = r.Cost
-			results[1] = r.Correct * 100
-		}
-
-		previousIteration = r.Iteration
-	}
-
-	if err != nil {
+	if err := net.Train(args); err != nil {
 		panic(err.Error())
 	}
 
-	// fmt.Printf("%d, %s\n", previousIteration, format(results...))
+	final()
 	fmt.Println("Done training! It took", time.Since(startTime).Seconds(), "seconds")
 }
 
 func test(net *bs.Network, dataset [][][]float64) {
-	testData, err := bs.Data(dataset, bs.EndEvery(len(dataset)), bs.EndEvery(len(dataset)))
+	testData, err := bs.SeqData(dataset, len(dataset), len(dataset))
 	if err != nil {
 		panic(err.Error())
 	}
 
 	fmt.Println("Testing...")
-	_, _, err = net.Test(testData, bs.SquaredError(true), bs.CorrectRound)
+	_, _, err = net.Test(testData, bs.CorrectRound)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -137,47 +102,33 @@ func main() {
 
 	net := new(bs.Network)
 	fmt.Println("Setting up network...")
+	/*{
+		l := net.Add("input", nil, 2)
+		l = net.Add("hidden neurons", operators.Neurons(), 3, l).Opt(optimizers.SGD())
+		l = net.Add("hidden logistic", operators.Logistic(), 3, l)
+		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD())
+		l = net.Add("output logistic", operators.Logistic(), 1, l)
+
+		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
+		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
+			panic(err.Error())
+		}
+	}*/
 	{
-		var err error
-		var l, loop, loopAF *bs.Node
+		l := net.Add("input", nil, 2)
+		loop := net.Placeholder("loop", 1)
+		loopAF := net.Add("loop logistic", operators.Logistic(), 1, loop)
 
-		if l, err = net.Add("input", nil, 2); err != nil {
-			panic(err.Error())
-		}
+		l = net.Add("hidden layer neurons", operators.Neurons(), 2, l, loopAF).Opt(optimizers.SGD())
+		l = net.Add("hidden layer logistic", operators.Logistic(), 2, l)
 
-		if loop, err = net.Placeholder("loop", 1); err != nil {
-			panic(err.Error())
-		}
+		loop.Replace(operators.Neurons(), l).SetDelay(1).Opt(optimizers.SGD())
 
-		if loopAF, err = net.Add("loop logistic", operators.Logistic(), 1, loop); err != nil {
-			panic(err.Error())
-		}
+		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD())
+		l = net.Add("output logistic", operators.Logistic(), 1, l)
 
-		if l, err = net.Add("hidden layer neurons", operators.Neurons(optimizers.GradientDescent()), 2, l, loopAF); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("hidden layer logistic", operators.Logistic(), 2, l); err != nil {
-			panic(err.Error())
-		}
-
-		if err = loop.Replace(operators.Neurons(optimizers.GradientDescent()), l); err != nil {
-			panic(err.Error())
-		}
-
-		if err = loop.SetDelay(1); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("output neurons", operators.Neurons(optimizers.GradientDescent()), 1, l); err != nil {
-			panic(err.Error())
-		}
-
-		if l, err = net.Add("output logistic", operators.Logistic(), 1, l); err != nil {
-			panic(err.Error())
-		}
-
-		if err = net.SetOutputs(l); err != nil {
+		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
+		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
 			panic(err.Error())
 		}
 	}
@@ -186,12 +137,13 @@ func main() {
 	train(net, dataset)
 	test(net, dataset)
 	save(net)
-	net = load()
-	// train(net, dataset)
-	test(net, dataset)
-	save(net)
 
-	// net := load()
+	// net = load()
+	// train(net, dataset)
+	// test(net, dataset)
+	// save(net)
+
+	// net = load()
 	// train(net, dataset)
 	// test(net, dataset)
 	// save(net)

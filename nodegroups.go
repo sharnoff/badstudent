@@ -130,9 +130,33 @@ func (ng *nodeGroup) getValues(dupe bool) []float64 {
 	}
 }
 
+// assumes len(ds) == ng.size()
+//
+// not multithreaded -- could be a possible improvement
+func (ng *nodeGroup) addDeltas(ds []float64) {
+	for i, n := range ng.nodes {
+		if len(n.deltas) == 0 {
+			continue
+		}
+
+		// position in ds
+		pos := ng.sumVals[i] - n.Size()
+
+		d := n.deltas
+		if n.HasDelay() {
+			d = n.tempDelayDeltas
+		}
+
+		for j := range d {
+			d[j] += ds[pos+j]
+		}
+	}
+}
+
 // If not continuous, binary searches for the node with the specified index
 // Allows out-of-bounds panics instead of returning a nil error
 func (ng *nodeGroup) value(index int) float64 {
+	// Note: an easy optimization would be to add special cases for one or two nodes
 	if ng.isContinuous() {
 		return ng.values[index]
 	}
