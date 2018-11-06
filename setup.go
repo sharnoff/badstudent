@@ -5,14 +5,14 @@ import (
 )
 
 var defaultOptimizer func() Optimizer
-var defaultInitializer func() Initializer
+var defaultInitializer Initializer
 
 func SetDefaultOptimizer(f func() Optimizer) {
 	defaultOptimizer = f
 }
 
-func SetDefaultInitializer(f func() Initializer) {
-	defaultInitializer = f
+func SetDefaultInitializer(i Initializer) {
+	defaultInitializer = i
 }
 
 // initialize performs the small set of actions necessary to set up the network from
@@ -22,6 +22,7 @@ func (net *Network) initialize() {
 		return
 	}
 
+	net.defaultInit = defaultInitializer
 	net.hyperParams = make(map[string]HyperParameter)
 	net.inputs = new(nodeGroup)
 }
@@ -250,6 +251,10 @@ func (net *Network) finalize(isLoading bool, cf CostFunction, outputs ...*Node) 
 
 	net.cf = cf
 
+	if net.defaultInit == nil {
+		net.defaultInit = defaultInitializer
+	}
+
 	// Slightly reduce memory usage, mostly just to help my OCD
 	for _, n := range net.nodesByID {
 		n.outputs.trim()
@@ -257,8 +262,8 @@ func (net *Network) finalize(isLoading bool, cf CostFunction, outputs ...*Node) 
 		if n.adj != nil && !isLoading { // if loading, don't overwrite weights
 			if net.inits[n.id] != nil {
 				net.inits[n.id].Set(n, n.adj.Weights())
-			} else if defaultInitializer != nil {
-				defaultInitializer().Set(n, n.adj.Weights())
+			} else if net.defaultInit != nil {
+				net.defaultInit.Set(n, n.adj.Weights())
 			} else {
 				return errors.Errorf("Node %v missing initializer, default has not been set.", n)
 			}
@@ -440,4 +445,11 @@ func (n *Node) Init(i Initializer) *Node {
 
 	n.host.inits[n.id] = i
 	return n
+}
+
+// DefaultInit sets the Initializers of all Nodes in the Network that do not (or
+// will not) have Initializers directly set.
+func (net *Network) DefaultInit(i Initializer) *Network {
+	net.defaultInit = i
+	return net
 }

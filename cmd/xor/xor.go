@@ -4,7 +4,7 @@ import (
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/costfuncs"
 	"github.com/sharnoff/badstudent/hyperparams"
-	_ "github.com/sharnoff/badstudent/initializers"
+	"github.com/sharnoff/badstudent/initializers"
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/optimizers"
 
@@ -127,6 +127,7 @@ func main() {
 		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD())
 		l = net.Add("output logistic", operators.Logistic(), 1, l)
 
+		net.DefaultInit(initializers.Xavier())
 		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
 		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
 			panic(err.Error())
