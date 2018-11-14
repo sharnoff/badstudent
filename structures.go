@@ -13,7 +13,7 @@ type Network struct {
 	cf CostFunction
 
 	inits []Initializer
-	
+
 	defaultInit Initializer
 
 	hyperParams map[string]HyperParameter

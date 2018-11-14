@@ -139,10 +139,10 @@ func main() {
 	test(net, dataset)
 	save(net)
 
-	// net = load()
-	// train(net, dataset)
-	// test(net, dataset)
-	// save(net)
+	net = load()
+	train(net, dataset)
+	test(net, dataset)
+	save(net)
 
 	// net = load()
 	// train(net, dataset)
