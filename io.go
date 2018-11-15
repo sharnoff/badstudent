@@ -73,6 +73,7 @@ type proxy_Network struct {
 	// the IDs of each of the Nodes in the outputs
 	OutputsID []int
 	NumNodes  int
+	Iter      int
 	CFType    string // the type-string of the cost function
 }
 
@@ -120,6 +121,7 @@ func (net *Network) writeFile(dirPath string) error {
 	p := proxy_Network{
 		OutputsID: nodesToIDs(net.outputs.nodes),
 		NumNodes:  len(net.nodesByID),
+		Iter:      net.iter,
 		CFType:    net.cf.TypeString(),
 	}
 
@@ -258,6 +260,7 @@ func Load(dirPath string) (*Network, error) {
 
 	net := new(Network)
 	pNodes := make([]proxy_Node, pNet.NumNodes)
+	net.iter = pNet.Iter
 
 	// Load the Nodes, make placeholders
 	for id := 0; id < pNet.NumNodes; id++ {

@@ -336,6 +336,27 @@ func (n *Node) AddHP(name string, hp HyperParameter) *Node {
 	return n
 }
 
+// ReplaceHP replaces the HyperParameter with the given name. It is different from
+// AddHP in that it can only be run after the Network has been finalized.
+//
+// ReplaceHP will return error only if the Node does not already have that
+// HyperParameter, if the HyperParameter is nil, if the Network has not been
+// finalized, or if the provided Node is nil.
+func (n *Node) ReplaceHP(name string, hp HyperParameter) error {
+	if n == nil {
+		return errors.Errorf("Node is nil")
+	} else if n.host.stat < finalized {
+		return errors.Errorf("Network has not been finalized")
+	} else if hp == nil {
+		return errors.Errorf("HyperParameter is nil")
+	} else if _, has := n.hyperParams[name]; !has {
+		return errors.Errorf("No HyperParameter to replace (would be adding new)")
+	}
+
+	n.hyperParams[name] = hp
+	return nil
+}
+
 // AddHP adds the given HyperParameter to all Nodes within the Network
 func (net *Network) AddHP(name string, hp HyperParameter) *Network {
 	if net.stat >= finalized {
@@ -353,6 +374,20 @@ func (net *Network) AddHP(name string, hp HyperParameter) *Network {
 	}
 
 	return net
+}
+
+// ReplaceHP applies *Node.ReplaceHP to all Nodes with a HyperParameter already
+// there to replace.
+func (net *Network) ReplaceHP(name string, hp HyperParameter) error {
+	for _, n := range net.nodesByID {
+		if _, has := n.hyperParams[name]; has {
+			if err := n.ReplaceHP(name, hp); err != nil {
+				return errors.Wrapf(err, "Failed to replace HyperParameter for Node %v (id #%d)\n", n, n.id)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Opt sets the Optimizer of the Node. This can only be run during setup, and will

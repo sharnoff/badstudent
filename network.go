@@ -4,6 +4,28 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Nodes returns the list of all Nodes in the Network, sorted by ID such that
+// Nodes()[n] has id=n. Nodes returns a copy of the slice; it can be modified freely
+// but will not update if more Nodes are added to the Network.
+func (net *Network) Nodes() []*Node {
+	ns := make([]*Node, len(net.nodesByID))
+	copy(ns, net.nodesByID)
+	return ns
+}
+
+// ResetIter resets the number of iterations the Network has gone through to the
+// provided value. Usually this will be zero, and is done to reset after loading.
+//
+// It will return error if iter < 0.
+func (net *Network) ResetIter(iter int) error {
+	if iter < 0 {
+		return errors.Errorf("iter < 0 (%d)", iter)
+	}
+
+	net.iter = iter
+	return nil
+}
+
 // Returns the number of expected input values to the Network
 // Returns -1 if the network has not been completed yet
 func (net *Network) InputSize() int {
