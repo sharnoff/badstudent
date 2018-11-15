@@ -221,7 +221,7 @@ func initNet() (net *bs.Network) {
 
 	// /*
 	l = net.Add("conv-1", operators.Conv().Dims(28, 28).InputDims(28, 28).Filter(5, 5).Stride(1, 1).Pad(2, 2),
-		784, l).Init(initializers.VarianceScaling().In().Factor(float64(784)/(5*5)))
+		784, l).Init(initializers.VarianceScaling().In().Factor(float64(784) / (5 * 5)))
 	// must initialize with VarianceScaling because of the filter sizes
 
 	l = net.Add("pool-1", operators.AvgPool().Dims(14, 14).InputDims(28, 28).Filter(2, 2),
@@ -239,18 +239,18 @@ func initNet() (net *bs.Network) {
 	// */
 
 	/*
-	l = net.Add("hidden neurons", operators.Neurons(), 500, l).Opt(optimizers.SGD())
-	l = net.Add("hidden logistic", operators.Logistic(), 500, l)
+		l = net.Add("hidden neurons", operators.Neurons(), 500, l).Opt(optimizers.SGD())
+		l = net.Add("hidden logistic", operators.Logistic(), 500, l)
 
-	l = net.Add("out neurons", operators.Neurons(), 10, l).Opt(optimizers.SGD())
-	l = net.Add("out logistic", operators.Logistic(), 10, l)
+		l = net.Add("out neurons", operators.Neurons(), 10, l).Opt(optimizers.SGD())
+		l = net.Add("out logistic", operators.Logistic(), 10, l)
 
-	net.AddHP("learning-rate", hyperparams.Constant(learningRate))
-	net.DefaultInit(initializers.Xavier())
+		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
+		net.DefaultInit(initializers.Xavier())
 
-	if err := net.Finalize(costfuncs.MSE(), l); err != nil {
-		panic(err.Error())
-	}
+		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
+			panic(err.Error())
+		}
 	*/
 
 	fmt.Println("Done!")
