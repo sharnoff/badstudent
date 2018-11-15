@@ -36,6 +36,13 @@ func basePool() pool {
 	return p
 }
 
+// ***************************************************
+// Customization Functions
+//
+// Note: All functions are repated for both pooling operators because golang does
+// not support inheritance.
+// ***************************************************
+
 // Dims sets the output dimensions of the pooling Operator. It does not check that
 // the dimensions are valid until it is Finalized. Dims will panic if called after
 // the pooling Operator has been Finalized.
@@ -44,7 +51,17 @@ func basePool() pool {
 // be provided.
 //
 // If any dimensions collapse to a size of 1, they must still be included.
-func (p *pool) Dims(dims ...int) *pool {
+func (p *avgPool) Dims(dims ...int) *avgPool {
+	if p.poolConstructor == nil {
+		panic("pooling Operator has been finalized")
+	}
+
+	p.dims = dims
+	return p
+}
+
+// see above.
+func (p *maxPool) Dims(dims ...int) *maxPool {
 	if p.poolConstructor == nil {
 		panic("pooling Operator has been finalized")
 	}
@@ -56,7 +73,17 @@ func (p *pool) Dims(dims ...int) *pool {
 // InputDims sets the input dimensions of the pooling Operator, for internal use.
 // This is REQUIRED unless the Operator is being loaded. InputDims will panic if
 // called after the pooling Operator has been Finalized.
-func (p *pool) InputDims(dims ...int) *pool {
+func (p *avgPool) InputDims(dims ...int) *avgPool {
+	if p.poolConstructor == nil {
+		panic("pooling Operator has been finalized")
+	}
+
+	p.inputDims = dims
+	return p
+}
+
+// see above.
+func (p *maxPool) InputDims(dims ...int) *maxPool {
 	if p.poolConstructor == nil {
 		panic("pooling Operator has been finalized")
 	}
@@ -68,7 +95,17 @@ func (p *pool) InputDims(dims ...int) *pool {
 // Filter sets the size of the pooling for each dimension. This is REQUIRED unless
 // the Operator is being loaded. Filter will panic if called after the pooling
 // Operator has been Finalized.
-func (p *pool) Filter(dims ...int) *pool {
+func (p *avgPool) Filter(dims ...int) *avgPool {
+	if p.poolConstructor == nil {
+		panic("pooling Operator has been finalized")
+	}
+
+	p.filter = dims
+	return p
+}
+
+// see above.
+func (p *maxPool) Filter(dims ...int) *maxPool {
 	if p.poolConstructor == nil {
 		panic("pooling Operator has been finalized")
 	}
@@ -85,7 +122,17 @@ func (p *pool) Filter(dims ...int) *pool {
 // are larger than Filter.
 //
 // Stride is optional.
-func (p *pool) Stride(dims ...int) *pool {
+func (p *avgPool) Stride(dims ...int) *avgPool {
+	if p.poolConstructor == nil {
+		panic("pooling Operator has been finalized")
+	}
+
+	p.Str = dims
+	return p
+}
+
+// see above.
+func (p *maxPool) Stride(dims ...int) *maxPool {
 	if p.poolConstructor == nil {
 		panic("pooling Operator has been finalized")
 	}
@@ -97,7 +144,17 @@ func (p *pool) Stride(dims ...int) *pool {
 // Pad sets the amount of padding on both ends of each dimension. Pad defaults to
 // none, if not provided. Pad will panic if called after the pooling Operator has
 // been Finalized.
-func (p *pool) Pad(dims ...int) *pool {
+func (p *avgPool) Pad(dims ...int) *avgPool {
+	if p.poolConstructor == nil {
+		panic("pooling Operator has been finalized")
+	}
+
+	p.Padding = dims
+	return p
+}
+
+// see above.
+func (p *maxPool) Pad(dims ...int) *maxPool {
 	if p.poolConstructor == nil {
 		panic("pooling Operator has been finalized")
 	}
@@ -108,7 +165,12 @@ func (p *pool) Pad(dims ...int) *pool {
 
 // PadValue sets the value of the padding around the input. The default can be set
 // by SetDefault("pool-padding").
-func (p *pool) PadValue(v float64) *pool {
+func (p *avgPool) PadValue(v float64) *avgPool {
+	p.PaddingValue = v
+	return p
+}
+
+func (p *maxPool) PadValue(v float64) *maxPool {
 	p.PaddingValue = v
 	return p
 }

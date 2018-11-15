@@ -156,11 +156,12 @@ func (c *conv) PadValue(v float64) *conv {
 // Depth sets the number of 'copies' of the output that are going to be made.
 // Different parameters are used for each depth. Depth defaults to 1, and will cause
 // Finalize to error if less than 1.
-func (c *conv) Depth() *conv {
+func (c *conv) Depth(d int) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
 	}
 
+	c.Dep = d
 	return c
 }
 
@@ -227,7 +228,7 @@ func (c *conv) MustSize() int {
 // Finalize would.
 func (c *conv) Size() (int, error) {
 	if c.Outs != nil {
-		return c.Outs.Size(), nil
+		return c.Outs.Size() * c.Dep, nil
 	}
 
 	if c.inputDims == nil {
@@ -283,7 +284,7 @@ func (c *conv) Size() (int, error) {
 
 			if (in+s-f)%s != 0 {
 				return 0, errors.Errorf("Dimenision #%d does not divide evenly: (InputDim + 2*Padding + Stride - Filter) %% (Stride) != 0 "+
-					"((%d + 2*%d + %d - %d)%%%d != 0)", i, c.inputDims[i], c.Padding[i], s, f, s)
+					"((%d + 2*%d + %d - %d)%%%d = %d)", i, c.inputDims[i], c.Padding[i], s, f, s, (in+s-f)%s)
 			} else if (in+s-f)/s != d {
 				return 0, errors.Errorf("Dimension #%d does not produce desired output (InputDim + 2*Padding + Stride - Filter) / (Stride) != OutputDim "+
 					"((%d + 2*%d + %d - %d) / (%d) != %d", i, c.inputDims[i], c.Padding[i], s, f, s, d)
@@ -324,7 +325,7 @@ func (c *conv) isPadding(point []int) bool {
 
 	// if any are less than 0, it's padding
 	for i := range p {
-		if p[i] < 0 || p[i] > c.Outs.Dim(i) {
+		if p[i] < 0 || p[i] >= c.Outs.Dim(i) {
 			return true
 		}
 	}
@@ -351,7 +352,7 @@ func (c *conv) inputsTo(out_p []int) []int {
 		// in is the current input that we're looking at, including padding
 		var in_p []int
 		{
-			in_p := make([]int, len(topLeft_p))
+			in_p = make([]int, len(topLeft_p))
 			copy(in_p, topLeft_p)
 			mapAdd(in_p, fMod)
 		}
@@ -418,9 +419,9 @@ func (t *conv) Finalize(n *bs.Node) error {
 
 	var wLen int
 	if !t.ShareParams {
-		t.Ws = make([]float64, (t.Filt.Size()+t.NumBiases)*n.Size())
+		wLen = (t.Filt.Size() + t.NumBiases) * n.Size()
 	} else {
-		t.Ws = make([]float64, (t.Filt.Size()+t.NumBiases)*t.Dep)
+		wLen = (t.Filt.Size() + t.NumBiases) * t.Dep
 	}
 
 	if t.Ws == nil {
