@@ -128,7 +128,7 @@ func main() {
 		l = net.Add("output logistic", operators.Logistic(), 1, l)
 
 		net.DefaultInit(initializers.Xavier())
-		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
+		net.AddHP("learning-rate", hyperparams.Step(learningRate).Add(5000, learningRate / 10))
 		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
 			panic(err.Error())
 		}
@@ -144,9 +144,11 @@ func main() {
 	test(net, dataset)
 	save(net)
 
+	/*
 	if err := net.Graph("graph"); err != nil {
 		panic(err.Error())
 	}
+	// */
 
 	// net = load()
 	// train(net, dataset)

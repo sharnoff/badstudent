@@ -7,6 +7,7 @@ import (
 func init() {
 	list := map[string]func() bs.HyperParameter{
 		Constant(0).TypeString(): func() bs.HyperParameter { return Constant(0) }, // 0 is just random. It'll be loaded.
+		Step(0).TypeString():     func() bs.HyperParameter { return Step(0) },
 	}
 
 	for s, f := range list {

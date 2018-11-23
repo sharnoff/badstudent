@@ -4,11 +4,11 @@ package badstudent
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
 	"os"
-	"strconv"
 	"os/exec"
-	"fmt"
+	"strconv"
 )
 
 // Go 2.0, can you arrive any sooner?
@@ -384,7 +384,7 @@ func Load(dirPath string) (*Network, error) {
 // Graphviz is available at https://graphviz.gitlab.io/
 func (net *Network) Graph(path string) error {
 	// dot -Tpdf /dev/stdin -o graph.pdf
-	cmd := exec.Command("dot", "-Tpdf", "/dev/stdin", "-o", path + ".pdf")
+	cmd := exec.Command("dot", "-Tpdf", "/dev/stdin", "-o", path+".pdf")
 
 	// error only occurs if stdin is set or if the process has started
 	writer, err := cmd.StdinPipe()
@@ -399,12 +399,12 @@ func (net *Network) Graph(path string) error {
 	// write file to pipe
 	func() {
 		print := func(format string, a ...interface{}) error {
-			_, err := fmt.Fprintf(writer, format + "\n", a...)
+			_, err := fmt.Fprintf(writer, format+"\n", a...)
 			return err
 		}
 
 		print("digraph {")
-		
+
 		for id, n := range net.nodesByID {
 			if err := print("%d [label=%q]", id, n.String()); err != nil {
 				return
@@ -428,7 +428,7 @@ func (net *Network) Graph(path string) error {
 		if err := print("}"); err != nil {
 			return
 		}
-		
+
 		writer.Close()
 	}()
 
