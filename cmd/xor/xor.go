@@ -144,6 +144,10 @@ func main() {
 	test(net, dataset)
 	save(net)
 
+	if err := net.Graph("graph"); err != nil {
+		panic(err.Error())
+	}
+
 	// net = load()
 	// train(net, dataset)
 	// test(net, dataset)

@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"os"
 	"strconv"
+	"os/exec"
+	"fmt"
 )
 
 // Go 2.0, can you arrive any sooner?
@@ -236,6 +238,7 @@ func (net *Network) Save(dirPath string, overwrite bool) error {
 	return nil
 }
 
+// Load generates the Network from the provided directory, written to by Save
 func Load(dirPath string) (*Network, error) {
 	// check if the folder exists
 	if _, err := os.Stat(dirPath); err != nil {
@@ -369,4 +372,69 @@ func Load(dirPath string) (*Network, error) {
 	}
 
 	return net, nil
+}
+
+// Graph generates a graph of the Network, through the DOT Language and graphviz's
+// dot command. N.B: if dot is not installed, this method will fail. Graph creates a
+// pdf file with the name and location given by path.
+//
+// Specifics: The graph printed is a digraph, with dotted lines for connections with
+// delay, labeled with the amount of delay if it is more than 1.
+//
+// Graphviz is available at https://graphviz.gitlab.io/
+func (net *Network) Graph(path string) error {
+	// dot -Tpdf /dev/stdin -o graph.pdf
+	cmd := exec.Command("dot", "-Tpdf", "/dev/stdin", "-o", path + ".pdf")
+
+	// error only occurs if stdin is set or if the process has started
+	writer, err := cmd.StdinPipe()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to set StdinPipe for command\n")
+	}
+
+	if err := cmd.Start(); err != nil {
+		return errors.Wrapf(err, "Failed to start dot command\n")
+	}
+
+	// write file to pipe
+	func() {
+		print := func(format string, a ...interface{}) error {
+			_, err := fmt.Fprintf(writer, format + "\n", a...)
+			return err
+		}
+
+		print("digraph {")
+		
+		for id, n := range net.nodesByID {
+			if err := print("%d [label=%q]", id, n.String()); err != nil {
+				return
+			}
+
+			if num(n.outputs) != 0 {
+				for _, o := range n.outputs.nodes {
+					if n.Delay() != 0 {
+						if err := print("%d -> %d [style=\"dashed\", label=\"%d\"]", id, o.id, n.Delay()); err != nil {
+							return
+						}
+					} else {
+						if err := print("%d -> %d", id, o.id); err != nil {
+							return
+						}
+					}
+				}
+			}
+		}
+
+		if err := print("}"); err != nil {
+			return
+		}
+		
+		writer.Close()
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		return errors.Wrapf(err, "dot command failed\n")
+	}
+
+	return nil
 }
