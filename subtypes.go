@@ -1,18 +1,31 @@
 package badstudent
 
-// Storable is an optional additional interface for Operators and Optimizers.
-// It allows saving and loading with files for types that implement it, and is
-// a required part of some additional interfaces
+// Storable is an optional additional interface for any element that can provided to
+// Nodes (Operator, Optimizer, Hyperparameter, Penalty). It allows saving and
+// loading with files for types that implement it, and is a required part of some
+// additional interfaces.
 type Storable interface {
 	// Save saves the object, given a path to a directory, with no
 	// appended backslash.
-	Save(n *Node, dirPath string) error
+	Save(dirPath string) error
 
 	// Load loads the object, given a path to a directory, with no appended
 	// backslash.
 	//
 	// For Operators, Loading will take place before compilation.
 	Load(dirPath string) error
+}
+
+// JSONAble is an optional additional interface for any element that can be provided
+// to Nodes that offers an alternate to Storable for saving and loading. If both
+// JSONAble and Storable are implemented, Storable will be actioned instead of
+// JSONAble.
+type JSONAble interface {
+	// Get returns the value to be provided to the JSON marshaller.
+	Get() interface{}
+
+	// Blank returns a pointer to a value to set from the JSON unmarshaller.
+	Blank() interface{}
 }
 
 /*
@@ -85,8 +98,8 @@ type Elementwise interface {
 // Adjustable is an extension on top of Operator for those that have adjustable
 // weights
 type Adjustable interface {
-	Operator
-	Storable
+	// Operator
+	// Storable
 
 	// Grad returns the gradient of the weight specified by the given index. This is
 	// determined, in part, using the deltas (derviative w.r.t. total cost) of the
@@ -138,6 +151,18 @@ type Optimizer interface {
 	// Needs returns a list of names of HyperParameters that are needed to run the
 	// Optimizer. These can be obtained at each iteration from *Node.HP()
 	Needs() []string
+}
+
+// Penalty changes the gradients provided by Operators.
+type Penalty interface {
+	// TypeString returns a constant, unique string corresponding to the type of the
+	// Penalty. It is only called during saving and loading.
+	//
+	// For example: the Penalty "Lasso" returns "lasso"
+	TypeString() string
+
+	// Penalize changes the gradients to add on the penalty
+	Penalize(n *Node, adj Adjustable, index int) float64
 }
 
 // CostFunction is the interface defined for allowing measures of model performance,

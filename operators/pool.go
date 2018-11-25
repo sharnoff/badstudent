@@ -357,7 +357,7 @@ func (p *pool) Finalize(n *bs.Node) error {
 	return nil
 }
 
-func (p *pool) Save(n *bs.Node, dirPath string) error {
+func (p *pool) Save(dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Failed to create directory %q", dirPath)
 	}

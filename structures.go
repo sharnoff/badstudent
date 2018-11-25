@@ -89,8 +89,8 @@ type Node struct {
 	el  Elementwise
 	lyr Layer
 
-	// nil if adj is nil
 	opt Optimizer
+	pen Penalty
 
 	// changes to the weights that have been delayed until the end of the batch
 	delayedWeights []float64

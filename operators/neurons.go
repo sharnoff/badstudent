@@ -105,7 +105,7 @@ func (t *neurons) Finalize(n *bs.Node) error {
 }
 
 // encodes via JSON into 'weights.txt'
-func (t *neurons) Save(n *bs.Node, dirPath string) error {
+func (t *neurons) Save(dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Failed to create save directory")
 	}

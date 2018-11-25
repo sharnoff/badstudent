@@ -412,6 +412,28 @@ func (n *Node) Opt(opt Optimizer) *Node {
 	return n
 }
 
+// SetPenalty sets the penalty on the weights of the node. This can only be run
+// during setup, and will panic if called afters setup.
+//
+// SetPenalty returns the Node it is called on so that it can be stacked.
+func (n *Node) SetPenalty(p Penalty) *Node {
+	if n == nil {
+		return n
+	} else if n.host.stat >= finalized {
+		panic("Cannot set Penalty, Network has been finalized.")
+	} else if n.host.err != nil {
+		return n
+	}
+
+	if p == nil {
+		n.host.err = errors.Errorf("Cannot set Penalty of Node %v, Penalty is nil", n)
+		return n
+	}
+
+	n.pen = p
+	return n
+}
+
 // SetDelay sets the amount of delay in the Node
 //
 // Constraints:
@@ -464,7 +486,7 @@ func (n *Node) SetDelay(delay int) *Node {
 		}
 	}
 
-	return nil
+	return n
 }
 
 // Init sets the initializer of the Node. If not provided, the default Initializer

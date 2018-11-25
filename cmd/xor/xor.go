@@ -7,6 +7,7 @@ import (
 	"github.com/sharnoff/badstudent/initializers"
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/optimizers"
+	"github.com/sharnoff/badstudent/penalties"
 
 	"fmt"
 	"time"
@@ -122,9 +123,9 @@ func main() {
 		l = net.Add("hidden layer neurons", operators.Neurons(), 2, l, loopAF).Opt(optimizers.SGD())
 		l = net.Add("hidden layer logistic", operators.Logistic(), 2, l)
 
-		loop.Replace(operators.Neurons(), l).SetDelay(1).Opt(optimizers.SGD())
+		loop.Replace(operators.Neurons(), l).SetDelay(1).Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.01))
 
-		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD())
+		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.001))
 		l = net.Add("output logistic", operators.Logistic(), 1, l)
 
 		net.DefaultInit(initializers.Xavier())

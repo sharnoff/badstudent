@@ -16,12 +16,14 @@ var ops map[string]func() Operator
 var opts map[string]func() Optimizer
 var cfs map[string]func() CostFunction
 var hps map[string]func() HyperParameter
+var pens map[string]func() Penalty
 
 func init() {
 	ops = make(map[string]func() Operator)
 	opts = make(map[string]func() Optimizer)
 	cfs = make(map[string]func() CostFunction)
 	hps = make(map[string]func() HyperParameter)
+	pens = make(map[string]func() Penalty)
 }
 
 // RegisterOperator updates internals so that Load() will recognize the Operator.
@@ -65,9 +67,20 @@ func RegisterCostFunction(name string, f func() CostFunction) error {
 func RegisterHyperParameter(name string, f func() HyperParameter) error {
 	if _, ok := hps[name]; ok {
 		return errors.Errorf("Name %s has already been registered", name)
+	} else if name == "" {
+		return errors.Errorf("Empty string is not a valid name")
 	}
 
 	hps[name] = f
+	return nil
+}
+
+func RegisterPenalty(name string, f func() Penalty) error {
+	if _, ok := pens[name]; ok {
+		return errors.Errorf("Name %s has already been registered", name)
+	}
+
+	pens[name] = f
 	return nil
 }
 
@@ -83,8 +96,9 @@ type proxy_Node struct {
 	Size       int
 	Name       string
 	TypeString string
-	OptString  string            // usually nil
-	HPTypes    map[string]string // map of names to type-strings
+	OptString  string            // -> usually nil
+	HPTypes    map[string]string // -> map of names to type-strings
+	PenString  string            // -> equals "" if absent
 	InputsID   []int
 	Delay      int
 }
@@ -107,19 +121,44 @@ func idsToNodes(nodesByID []*Node, ids []int) []*Node {
 
 const (
 	main_file string = "main.net"
+	cf_ext    string = "cf"
 	typ_ext   string = "typ"
 	opt_ext   string = "opt"
 	hp_pref   string = "hp_"
+	pen_ext   string = "pen"
 )
 
-func (net *Network) writeFile(dirPath string) error {
-	f, err := os.Create(dirPath + "/" + main_file)
+func saveJSON(v interface{}, file string) error {
+	f, err := os.Create(file)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create file %q in %q\n", main_file, dirPath)
+		return errors.Wrapf(err, "Failed to create file %q\n", file)
 	}
-
 	defer f.Close()
 
+	enc := json.NewEncoder(f)
+	if err = enc.Encode(v); err != nil {
+		return errors.Wrapf(err, "Failed to write json to file %q\n", file)
+	}
+
+	return nil
+}
+
+func loadJSON(v interface{}, file string) error {
+	f, err := os.Open(file)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to open file %q\n", file)
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	if err = dec.Decode(v); err != nil {
+		return errors.Wrapf(err, "Failed to read json from file %q\n", file)
+	}
+
+	return nil
+}
+
+func (net *Network) writeFile(dirPath string) error {
 	p := proxy_Network{
 		OutputsID: nodesToIDs(net.outputs.nodes),
 		NumNodes:  len(net.nodesByID),
@@ -127,9 +166,18 @@ func (net *Network) writeFile(dirPath string) error {
 		CFType:    net.cf.TypeString(),
 	}
 
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(p); err != nil {
-		return errors.Wrapf(err, "Failed to write information to file %q in %q\n", main_file, dirPath)
+	if err := saveJSON(p, dirPath + "/" + main_file); err != nil {
+		return err
+	}
+
+	if st, ok := net.cf.(Storable); ok {
+		if err := st.Save(dirPath + "/" + cf_ext); err != nil {
+			return errors.Wrapf(err, "Failed to save Network CostFunction\n")
+		}
+	} else if j, ok := net.cf.(JSONAble); ok {
+		if err := saveJSON(j.Get(), dirPath + "/" + cf_ext + ".txt"); err != nil {
+			return errors.Wrapf(err, "Failed to save Network CostFunction\n")
+		}
 	}
 
 	return nil
@@ -152,32 +200,33 @@ func (n *Node) writeFile(dirPath string) error {
 		hpTypes[name] = hp.TypeString()
 	}
 
+	pen := ""
+	if n.pen != nil {
+		pen = n.pen.TypeString()
+	}
+
 	p := proxy_Node{
 		Size:       n.Size(),
 		Name:       n.Name(),
 		TypeString: typStr,
 		OptString:  optStr,
 		HPTypes:    hpTypes,
+		PenString:  pen,
 		InputsID:   nodesToIDs(n.inputs.nodes),
 		Delay:      n.Delay(),
 	}
 
-	f, err := os.Create(path + ".node")
-	if err != nil {
-		return errors.Errorf("Failed to create save file (file %q in %q)", strconv.Itoa(n.id)+".node", dirPath)
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	err = enc.Encode(p)
-
-	if err != nil {
-		return errors.Errorf("Failed to write information (file %q in %q)", strconv.Itoa(n.id)+".node", dirPath)
+	if err := saveJSON(p, path + ".node"); err != nil {
+		return errors.Wrapf(err, "Failed to save Node\n")
 	}
 
 	if n.typ != nil {
 		if st, ok := n.typ.(Storable); ok {
-			if err = st.Save(n, path+"/"+typ_ext); err != nil {
+			if err := st.Save(path + "/" + typ_ext); err != nil {
+				return errors.Wrapf(err, "Failed to save Operator\n")
+			}
+		} else if j, ok := n.typ.(JSONAble); ok {
+			if err := saveJSON(j.Get(), path + "/" + typ_ext + ".txt"); err != nil {
 				return errors.Wrapf(err, "Failed to save Operator\n")
 			}
 		}
@@ -185,7 +234,11 @@ func (n *Node) writeFile(dirPath string) error {
 
 	if n.opt != nil {
 		if st, ok := n.opt.(Storable); ok {
-			if err = st.Save(n, path+"/"+opt_ext); err != nil {
+			if err := st.Save(path + "/" + opt_ext); err != nil {
+				return errors.Wrapf(err, "Failed to save Optimizer\n")
+			}
+		} else if j, ok := n.opt.(JSONAble); ok {
+			if err := saveJSON(j.Get(), path + "/" + opt_ext + ".txt"); err != nil {
 				return errors.Wrapf(err, "Failed to save Optimizer\n")
 			}
 		}
@@ -193,8 +246,24 @@ func (n *Node) writeFile(dirPath string) error {
 
 	for name, hp := range n.hyperParams {
 		if st, ok := hp.(Storable); ok {
-			if err = st.Save(n, path+"/"+hp_pref+name); err != nil {
+			if err := st.Save(path + "/" + hp_pref + name); err != nil {
 				return errors.Wrapf(err, "Failed to save HyperParameter (name: %s, type: %s)\n", name, hp.TypeString())
+			}
+		} else if j, ok := hp.(JSONAble); ok {
+			if err := saveJSON(j.Get(), path + "/" + hp_pref + name + ".txt"); err != nil {
+				return errors.Wrapf(err, "Failed to save HyperParameter (name: %s, type: %s)\n", name, hp.TypeString())
+			}
+		}
+	}
+
+	if n.pen != nil {
+		if st, ok := n.pen.(Storable); ok {
+			if err := st.Save(path + "/" + pen_ext); err != nil {
+				return errors.Wrapf(err, "Failed to save Penalty\n")
+			}
+		} else if j, ok := n.pen.(JSONAble); ok {
+			if err := saveJSON(j.Get(), path + "/" + pen_ext + ".txt"); err != nil {
+				return errors.Wrapf(err, "Failed to save Penalty\n")
 			}
 		}
 	}
@@ -247,18 +316,8 @@ func Load(dirPath string) (*Network, error) {
 
 	// Load the main network
 	var pNet proxy_Network
-	{
-		f, err := os.Open(dirPath + "/" + main_file)
-		if err != nil {
-			return nil, errors.Errorf("Failed to open Network overview (file %q in %q)", main_file, dirPath)
-		}
-
-		defer f.Close()
-
-		dec := json.NewDecoder(f)
-		if err = dec.Decode(&pNet); err != nil {
-			return nil, errors.Errorf("Failed to parse Network overview (file %q in %q)", main_file, dirPath)
-		}
+	if err := loadJSON(&pNet, dirPath + "/" + main_file); err != nil {
+		return nil, errors.Wrapf(err, "Failed to load Network overview\n")
 	}
 
 	net := new(Network)
@@ -268,24 +327,9 @@ func Load(dirPath string) (*Network, error) {
 	// Load the Nodes, make placeholders
 	for id := 0; id < pNet.NumNodes; id++ {
 		path := dirPath + "/" + strconv.Itoa(id)
-		f, err := os.Open(path + ".node")
-		if err != nil {
-			return nil, errors.Errorf("Failed to open save for Node (id %d) (file %q in %q)",
-				id, strconv.Itoa(id)+".node", dirPath)
-		}
 
-		if err = func() error {
-			defer f.Close()
-
-			dec := json.NewDecoder(f)
-			if err = dec.Decode(&pNodes[id]); err != nil {
-				return errors.Errorf("Failed to read save for Node (id %d) (file %q in %q)",
-					id, strconv.Itoa(id)+".node", dirPath)
-			}
-
-			return nil
-		}(); err != nil {
-			return nil, err
+		if err := loadJSON(&pNodes[id], path + ".node"); err != nil {
+			return nil, errors.Wrapf(err, "Failed to read save for Node (id %d)\n", id)
 		}
 
 		net.Placeholder(pNodes[id].Name, pNodes[id].Size)
@@ -301,6 +345,7 @@ func Load(dirPath string) (*Network, error) {
 
 		var typ Operator
 		var opt Optimizer
+		var pen Penalty
 		if len(inputs) > 0 {
 			if ops[pNodes[id].TypeString] == nil {
 				return nil, errors.Errorf("Operator type %q has not been registered", pNodes[id].TypeString)
@@ -309,6 +354,10 @@ func Load(dirPath string) (*Network, error) {
 			typ = ops[pNodes[id].TypeString]()
 			if st, ok := typ.(Storable); ok {
 				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + typ_ext); err != nil {
+					return nil, errors.Wrapf(err, "Failed to Load Operator for Node %q (id %d)\n", pNodes[id].Name, id)
+				}
+			} else if j, ok := typ.(JSONAble); ok {
+				if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + typ_ext + ".txt"); err != nil {
 					return nil, errors.Wrapf(err, "Failed to Load Operator for Node %q (id %d)\n", pNodes[id].Name, id)
 				}
 			}
@@ -322,7 +371,24 @@ func Load(dirPath string) (*Network, error) {
 
 				if st, ok := opt.(Storable); ok {
 					if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + opt_ext); err != nil {
-						return nil, errors.Wrapf(err, "Failed to Load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
+						return nil, errors.Wrapf(err, "Failed to load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
+					}
+				} else if j, ok := opt.(JSONAble); ok {
+					if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + opt_ext + ".txt"); err != nil {
+						return nil, errors.Wrapf(err, "Failed to load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
+					}
+				}
+
+				if pNodes[id].PenString != "" {
+					pen = pens[pNodes[id].PenString]()
+					if st, ok := pen.(Storable); ok {
+						if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + pen_ext); err != nil {
+							return nil, errors.Wrapf(err, "Failed to Load Penalty for Node %q (id %d)\n", pNodes[id].Name, id)
+						}
+					} else if j, ok := pen.(JSONAble); ok {
+						if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + pen_ext + ".txt"); err != nil {
+							return nil, errors.Wrapf(err, "Failed to load Penalty for Node %q (id %d)\n", pNodes[id].Name, id)
+						}
 					}
 				}
 			}
@@ -340,6 +406,9 @@ func Load(dirPath string) (*Network, error) {
 		if pNodes[id].Delay != 0 {
 			n.SetDelay(pNodes[id].Delay)
 		}
+		if pen != nil {
+			n.SetPenalty(pen)
+		}
 
 		for name, ts := range pNodes[id].HPTypes {
 			if hps[ts] == nil {
@@ -350,6 +419,10 @@ func Load(dirPath string) (*Network, error) {
 
 			if st, ok := hp.(Storable); ok {
 				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + hp_pref + name); err != nil {
+					return nil, errors.Wrapf(err, "Failed to Load HyperParameter %q for Node %q (id %d)\n", ts, n.name, id)
+				}
+			} else if j, ok := hp.(JSONAble); ok {
+				if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + hp_pref + name + ".txt"); err != nil {
 					return nil, errors.Wrapf(err, "Failed to load HyperParameter %q for Node %q (id %d)\n", ts, n.name, id)
 				}
 			}
@@ -366,6 +439,15 @@ func Load(dirPath string) (*Network, error) {
 	}
 
 	cf := cfs[pNet.CFType]()
+	if st, ok := cf.(Storable); ok {
+		if err := st.Load(dirPath + "/" + cf_ext); err != nil {
+			return nil, errors.Wrapf(err, "Failed to Load Network CostFunction\n")
+		}
+	} else if j, ok := cf.(JSONAble); ok {
+		if err := loadJSON(j.Blank(), dirPath + "/" + cf_ext + ".txt"); err != nil {
+			return nil, errors.Wrapf(err, "Failed to load Network CostFunction\n")
+		}
+	}
 
 	if err := net.finalize(true, cf, idsToNodes(net.nodesByID, pNet.OutputsID)...); err != nil {
 		return nil, errors.Wrapf(err, "Failed to finalize Network\n")

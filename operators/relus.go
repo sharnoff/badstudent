@@ -60,7 +60,7 @@ func (t lrelu) TypeString() string {
 	return "leaky-relu"
 }
 
-func (t *lrelu) Save(n *bs.Node, dirPath string) error {
+func (t *lrelu) Save(dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Failed to create save directory")
 	}
@@ -134,7 +134,7 @@ func (t *prelu) Finalize(n *bs.Node) error {
 	return nil
 }
 
-func (t *prelu) Save(n *bs.Node, dirPath string) error {
+func (t *prelu) Save(dirPath string) error {
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
 		return errors.Errorf("Failed to create save directory")
 	}

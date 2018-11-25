@@ -1,12 +1,5 @@
 package hyperparams
 
-import (
-	"encoding/json"
-	"github.com/pkg/errors"
-	bs "github.com/sharnoff/badstudent"
-	"os"
-)
-
 type step struct {
 	Iter int
 	Val  float64
@@ -44,38 +37,10 @@ func (s *stepper) Value(iter int) float64 {
 	return sl[len(sl)-1].Val
 }
 
-func (s *stepper) Save(n *bs.Node, dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create directory %q", dirPath)
-	}
-
-	f, err := os.Create(dirPath + "/stepper.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "stepper.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(s); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "stepper.txt", dirPath)
-	}
-
-	return nil
+func (s *stepper) Get() interface{} {
+	return *s
 }
 
-func (s *stepper) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/stepper.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "stepper.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(s); err != nil {
-		return errors.Wrapf(err, "Failed to decode JSON from file %q in %q", "stepper.txt", dirPath)
-	}
-
-	return nil
+func (s *stepper) Blank() interface{} {
+	return s
 }

@@ -472,7 +472,27 @@ func (n *Node) adjust(saveChanges bool) {
 		w = n.delayedWeights
 	}
 
-	n.opt.Run(n, n.adj, w)
+	var adj Adjustable
+	if n.pen != nil {
+		adj = penAdj{n.adj}
+	} else {
+		adj = n.adj
+	}
+
+	n.opt.Run(n, adj, w)
+}
+
+// penAdj serves to 
+type penAdj struct {
+	Adjustable
+}
+
+func (p penAdj) Grad(n *Node, index int) float64 {
+	return n.pen.Penalize(n, n.adj, index)
+}
+
+func (p penAdj) Weights() []float64 {
+	return p.Weights()
 }
 
 func (n *Node) addWeights() {
