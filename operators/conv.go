@@ -4,9 +4,6 @@ import (
 	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
-
-	"encoding/json"
-	"os"
 )
 
 type convConstructor struct {
@@ -433,42 +430,12 @@ func (t *conv) Finalize(n *bs.Node) error {
 	return nil
 }
 
-func (t *conv) Save(dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create directory %q", dirPath)
-	}
-
-	f, err := os.Create(dirPath + "/conv.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "conv.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(t); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "conv.txt", dirPath)
-	}
-
-	return nil
+func (t *conv) Get() interface{} {
+	return *t
 }
 
-// does not check if the loaded data is intact
-// only needs to be provided an empty struct; everything else will be filled in
-func (t *conv) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/conv.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "conv.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(t); err != nil {
-		return errors.Errorf("Failed to decode JSON from file %q in %q", "conv.txt", dirPath)
-	}
-
-	return nil
+func (t *conv) Blank() interface{} {
+	return t
 }
 
 func (t *conv) Evaluate(n *bs.Node, values []float64) {

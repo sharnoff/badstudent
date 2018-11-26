@@ -7,11 +7,8 @@
 package operators
 
 import (
-	"encoding/json"
-	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"math"
-	"os"
 )
 
 // ****************************************
@@ -60,38 +57,12 @@ func (t lrelu) TypeString() string {
 	return "leaky-relu"
 }
 
-func (t *lrelu) Save(dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create save directory")
-	}
-
-	f, err := os.Create(dirPath + "/leakage.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "leakage.txt", dirPath)
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(t); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "leakage.txt", dirPath)
-	}
-
-	return nil
+func (t *lrelu) Get() interface{} {
+	return *t
 }
 
-func (t *lrelu) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/leakage.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "leakage.txt", dirPath)
-	}
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(t); err != nil {
-		return errors.Errorf("Failed to decode JSON from file %q in %q", "leakage.txt", dirPath)
-	}
-
-	return nil
+func (t *lrelu) Blank() interface{} {
+	return t
 }
 
 func (t lrelu) Finalize(n *bs.Node) error {
@@ -134,38 +105,12 @@ func (t *prelu) Finalize(n *bs.Node) error {
 	return nil
 }
 
-func (t *prelu) Save(dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create save directory")
-	}
-
-	f, err := os.Create(dirPath + "/weights.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "weights.txt", dirPath)
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(t); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "weights.txt", dirPath)
-	}
-
-	return nil
+func (t *prelu) Get() interface{} {
+	return *t
 }
 
-func (t *prelu) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/weights.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "weights.txt", dirPath)
-	}
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(t); err != nil {
-		return errors.Errorf("Failed to decode JSON from file %q in %q", "weights.txt", dirPath)
-	}
-
-	return nil
+func (t *prelu) Blank() interface{} {
+	return t
 }
 
 func (t *prelu) Value(in float64, index int) float64 {

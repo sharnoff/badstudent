@@ -4,9 +4,6 @@ import (
 	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
-
-	"encoding/json"
-	"os"
 )
 
 type neurons struct {
@@ -104,40 +101,12 @@ func (t *neurons) Finalize(n *bs.Node) error {
 	return nil
 }
 
-// encodes via JSON into 'weights.txt'
-func (t *neurons) Save(dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create save directory")
-	}
-
-	f, err := os.Create(dirPath + "/weights.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "weights.txt", dirPath)
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(t); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "weights.txt", dirPath)
-	}
-
-	return nil
+func (t *neurons) Get() interface{} {
+	return *t
 }
 
-// decodes JSON from 'weights.txt'
-func (t *neurons) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/weights.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "weights.txt", dirPath)
-	}
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(t); err != nil {
-		return errors.Errorf("Failed to decode JSON from file %q in %q", "weights.txt", dirPath)
-	}
-
-	return nil
+func (t *neurons) Blank() interface{} {
+	return t
 }
 
 func (t *neurons) Evaluate(n *bs.Node, values []float64) {

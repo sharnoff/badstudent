@@ -4,9 +4,6 @@ import (
 	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
-
-	"encoding/json"
-	"os"
 )
 
 type poolConstructor struct {
@@ -357,40 +354,12 @@ func (p *pool) Finalize(n *bs.Node) error {
 	return nil
 }
 
-func (p *pool) Save(dirPath string) error {
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Errorf("Failed to create directory %q", dirPath)
-	}
-
-	f, err := os.Create(dirPath + "/pool.txt")
-	if err != nil {
-		return errors.Errorf("Failed to create file %q in %q", "pool.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	if err = enc.Encode(p); err != nil {
-		return errors.Errorf("Failed to encode JSON to file %q in %q", "pool.txt", dirPath)
-	}
-
-	return nil
+func (p *pool) Get() interface{} {
+	return *p
 }
 
-func (p *pool) Load(dirPath string) error {
-	f, err := os.Open(dirPath + "/pool.txt")
-	if err != nil {
-		return errors.Errorf("Failed to open file %q in %q", "pool.txt", dirPath)
-	}
-
-	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	if err = dec.Decode(p); err != nil {
-		return errors.Wrapf(err, "Failed to decode JSON from file %q in %q", "pool.txt", dirPath)
-	}
-
-	return nil
+func (p *pool) Blank() interface{} {
+	return p
 }
 
 func (po *pool) isPadding(point []int) bool {
