@@ -185,6 +185,12 @@ func (net *Network) writeFile(dirPath string) error {
 
 func (n *Node) writeFile(dirPath string) error {
 	path := dirPath + "/" + strconv.Itoa(n.id)
+	if _, err := os.Stat(path); err != nil {
+		// 0700 indicates universal read/write permissions
+		if err = os.MkdirAll(path, 0700); err != nil {
+			return errors.Wrapf(err, "Failed to create save directory for Node %v\n", n)
+		}
+	}
 
 	var typStr, optStr string
 	if n.typ != nil {
