@@ -1,8 +1,6 @@
-[![forthebadge](https://forthebadge.com/images/badges/uses-badges.svg)](https://forthebadge.com)
 [![GoDoc](https://godoc.org/github.com/sharnoff/badstudent?status.png)](http://godoc.org/github.com/sharnoff/badstudent)
-[![forthebadge](https://forthebadge.com/images/badges/60-percent-of-the-time-works-every-time.svg)](https://forthebadge.com)
 
-# badstudent
+# Badstudent
 
 ### What is it?
 
