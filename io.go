@@ -1,7 +1,5 @@
 package badstudent
 
-// io currently does not support saving or loading hyperparameters
-
 import (
 	"encoding/json"
 	"fmt"
@@ -11,12 +9,124 @@ import (
 	"strconv"
 )
 
+// RegisterNamePresentError documents errors resulting from conflicting names given by
+// TypeString() while Registering types
+type RegisterNamePresentError struct {
+	typ  string
+	name string
+}
+
+func (err RegisterNamePresentError) Error() string {
+	return "Failed to register " + err.typ + ", \"" + err.name + "\" was already present."
+}
+
+// Register updates internals so that Load() will recognize the given type. This
+// function does not pertain to the average use case; it is only necessary for creating
+// custom types. Register is given a function of the form func() <T>, where <T> can be any
+// of:
+//	(a) Operator
+//	(b) Optimizer
+//	(c) CostFunction
+//	(d) HyperParameter
+//	(e) Penalty
+//
+// Register has several errors that can be returned:
+//	(1) NilArgError, if fn is nil;
+//	(2) ErrRegisterWrongType, if fn is not one of the types listed above;
+//	(3) ErrRegisterNilReturn, if fn returns a nil interface; and
+//	(4) RegisterNamePresentError, if fn().TypeString() has already been registered.
+func Register(fn interface{}) error {
+	if fn == nil {
+		return NilArgError{"fn"}
+	}
+
+	switch t := fn.(type) {
+	case func() Operator:
+		r := t()
+		if r == nil {
+			return ErrRegisterNilReturn 
+		} else if ops[r.TypeString()] != nil {
+			return RegisterNamePresentError{"Operator", r.TypeString()}
+		}
+
+		ops[r.TypeString()] = t
+	case func() Optimizer:
+		r := t()
+		if r == nil {
+			return ErrRegisterNilReturn
+		} else if opts[r.TypeString()] != nil {
+			return RegisterNamePresentError{"Optimizer", r.TypeString()}
+		}
+
+		opts[r.TypeString()] = t
+	case func() CostFunction:
+		r := t()
+		if r == nil {
+			return ErrRegisterNilReturn
+		} else if cfs[r.TypeString()] != nil {
+			return RegisterNamePresentError{"CostFunction", r.TypeString()}
+		}
+
+		cfs[r.TypeString()] = t
+	case func() HyperParameter:
+		r := t()
+		if r == nil {
+			return ErrRegisterNilReturn
+		} else if hps[r.TypeString()] != nil {
+			return RegisterNamePresentError{"HyperParameter", r.TypeString()}
+		}
+
+		hps[r.TypeString()] = t
+	case func() Penalty:
+		r := t()
+		if r == nil {
+			return ErrRegisterNilReturn
+		} else if pens[r.TypeString()] != nil {
+			return RegisterNamePresentError{"Penalty", r.TypeString()}
+		}
+
+		pens[r.TypeString()] = t
+	default:
+		return ErrRegisterWrongType
+	}
+
+	return nil
+}
+
+// RegisterAll performs Register with all supplied functions. If it encounters an error,
+// it returns that error without context. Otherwise, it returns nil.
+//
+// The simplest way to use RegisterAll can be found in costfuncs/register.go:
+//	func init() {
+//		list := []interface{}{
+//			func() bs.CostFunction { return CrossEntropy() },
+//			func() bs.CostFunction { return Huber(0) },
+//			func() bs.CostFunction { return MSE() },
+//			func() bs.CostFunction { return Abs() },
+//		}
+//
+//		if err := bs.RegisterAll(list); err != nil {
+//			panic(err)
+//		}
+//	}
+func RegisterAll(fns []interface{}) error {
+	for i := range fns {
+		if err := Register(fns[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Go 2.0, can you arrive any sooner?
-var ops map[string]func() Operator
-var opts map[string]func() Optimizer
-var cfs map[string]func() CostFunction
-var hps map[string]func() HyperParameter
-var pens map[string]func() Penalty
+var (
+	ops  map[string]func() Operator
+	opts map[string]func() Optimizer
+	cfs  map[string]func() CostFunction
+	hps  map[string]func() HyperParameter
+	pens map[string]func() Penalty
+)
 
 func init() {
 	ops = make(map[string]func() Operator)
@@ -24,64 +134,6 @@ func init() {
 	cfs = make(map[string]func() CostFunction)
 	hps = make(map[string]func() HyperParameter)
 	pens = make(map[string]func() Penalty)
-}
-
-// RegisterOperator updates internals so that Load() will recognize the Operator.
-// Returns error if `name` is already present or if the provided Operator is
-// invalid: i.e. is neither Elementwise nor Layer.
-func RegisterOperator(name string, f func() Operator) error {
-	if _, ok := ops[name]; ok {
-		return errors.Errorf("Name %s has already been registered", name)
-	} else if !isValid(f()) {
-		return errors.Errorf("Function does not provide valid operators (neither Layer nor Elementwise)")
-	}
-
-	ops[name] = f
-	return nil
-}
-
-// RegisterOptimizer updates internals so that Load() will recognize the Optimizer.
-// Returns error if `name` is already present.
-func RegisterOptimizer(name string, f func() Optimizer) error {
-	if _, ok := opts[name]; ok {
-		return errors.Errorf("Name %s has already been registered", name)
-	}
-
-	opts[name] = f
-	return nil
-}
-
-// RegisterCostFunction updates internals so that Load() will recognize the
-// CostFunction. Returns error if `name` is already present.
-func RegisterCostFunction(name string, f func() CostFunction) error {
-	if _, ok := cfs[name]; ok {
-		return errors.Errorf("Name %s has already been registered", name)
-	}
-
-	cfs[name] = f
-	return nil
-}
-
-// RegisterHyperParameter updates internals so that Load() will recognize the
-// HyperParameter. Returns error if `name` is already present.
-func RegisterHyperParameter(name string, f func() HyperParameter) error {
-	if _, ok := hps[name]; ok {
-		return errors.Errorf("Name %s has already been registered", name)
-	} else if name == "" {
-		return errors.Errorf("Empty string is not a valid name")
-	}
-
-	hps[name] = f
-	return nil
-}
-
-func RegisterPenalty(name string, f func() Penalty) error {
-	if _, ok := pens[name]; ok {
-		return errors.Errorf("Name %s has already been registered", name)
-	}
-
-	pens[name] = f
-	return nil
 }
 
 type proxy_Network struct {
