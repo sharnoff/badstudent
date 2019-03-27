@@ -1,7 +1,6 @@
 package operators
 
 import (
-	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 )
 
@@ -17,10 +16,6 @@ func (t identity) TypeString() string {
 }
 
 func (t identity) Finalize(n *bs.Node) error {
-	if n.Size() != n.NumInputs() {
-		return errors.Errorf("Identity Operator must have same number of values as inputs (%d != %d)", n.Size(), n.NumInputs())
-	}
-
 	return nil
 }
 

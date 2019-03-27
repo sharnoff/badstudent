@@ -10,8 +10,8 @@ type huber struct {
 	print bool
 }
 
-// Huber returns the Huber Loss Function, which implements badstudent.CostFunction.
-// δ controls the bounds of the transition between MSE and Absolute Value.
+// Huber returns the Huber Loss Function, which implements badstudent.CostFunction. δ controls the
+// bounds of the transition between MSE and Absolute Value.
 func Huber(δ float64) *huber {
 	h := huber{δ: δ}
 	return &h

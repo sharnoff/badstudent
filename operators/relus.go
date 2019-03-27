@@ -28,8 +28,7 @@ func (t relu) TypeString() string {
 }
 
 func (t relu) Finalize(n *bs.Node) error {
-	// We don't need to check number of values because badstudent main does it for
-	// us
+	// We don't need to check number of values because badstudent main does it for us
 	return nil
 }
 
@@ -47,8 +46,7 @@ func (t relu) Deriv(n *bs.Node, index int) float64 {
 
 type lrelu float64
 
-// LeakyReLU returns a standard 'leaky ReLU', where the leaky factor is given by
-// alpha.
+// LeakyReLU returns a standard 'leaky ReLU', where the leaky factor is given by alpha.
 func LeakyReLU(alpha float64) lrelu {
 	return lrelu(alpha)
 }
@@ -145,8 +143,8 @@ func (t *prelu) Grad(n *bs.Node, index int) float64 {
 
 type elu int8
 
-// ELU (exponential linear unit) returns a smooth approximation of ReLU that tends
-// towards -1 as inputs become infinitely negative.
+// ELU (exponential linear unit) returns a smooth approximation of ReLU that tends towards -1 as
+// inputs become infinitely negative.
 func ELU() elu {
 	return elu(0)
 }
@@ -179,8 +177,8 @@ func (t elu) Deriv(n *bs.Node, index int) float64 {
 
 type softplus int8
 
-// Softplus is a smooth approximation of ReLU that approaches 0 as inputs tend
-// towards negative infinity.
+// Softplus is a smooth approximation of ReLU that approaches 0 as inputs tend towards negative
+// infinity.
 func Softplus() softplus {
 	return softplus(0)
 }

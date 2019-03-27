@@ -7,8 +7,7 @@ import (
 
 type abs bool
 
-// Abs returns the Absolute Value cost function, which implements
-// badstudent.CostFunction.
+// Abs returns the Absolute Value cost function, which implements badstudent.CostFunction.
 func Abs() *abs {
 	a := abs(false)
 	return &a

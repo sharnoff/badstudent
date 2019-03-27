@@ -197,7 +197,7 @@ func test(net *bs.Network, data *dataset) {
 
 func save(net *bs.Network) {
 	fmt.Println("Saving...")
-	if err := net.Save(path, true); err != nil {
+	if _, err := net.Save(path, true); err != nil {
 		panic(err.Error())
 	}
 	fmt.Println("Done!")
@@ -217,18 +217,19 @@ func load() (net *bs.Network) {
 func initNet() (net *bs.Network) {
 	fmt.Println("Creating...")
 	net = new(bs.Network)
-	l := net.Add("inputs", nil, imgSize)
+	net.PanicErrors()
+
+	l := net.AddInput([]int{28, 28}).SetName("inputs")
 
 	// /*
-	l = net.Add("conv-1", operators.Conv().Dims(28, 28).InputDims(28, 28).Filter(5, 5).Stride(1, 1).Pad(2, 2),
-		784, l).Init(initializers.VarianceScaling().In().Factor(float64(784) / (5 * 5)))
-	// must initialize with VarianceScaling because of the filter sizes
 
-	l = net.Add("pool-1", operators.AvgPool().Dims(14, 14).InputDims(28, 28).Filter(2, 2),
-		196, l)
+	l = net.Add(operators.Conv().InputDims(28,28).Dims(28,28).Filter(5,5).Pad(2,2).Stride(1, 1), l).
+		Init(initializers.VarianceScaling().In().Factor(float64(784) / (5*5))).SetName("conv-1")
 
-	l = net.Add("output neurons", operators.Neurons(), 10, l).Opt(optimizers.SGD())
-	l = net.Add("output logistic", operators.Logistic(), 10, l)
+	l = net.Add(operators.AvgPool().InputDims(28,28).Dims(14,14).Filter(2,2), l).SetName("pool-1")
+
+	l = net.Add(operators.Neurons(10), l).Opt(optimizers.SGD()).SetName("output neurons")
+	l = net.Add(operators.Logistic(), l).SetName("output logistic")
 
 	net.AddHP("learning-rate", hyperparams.Constant(learningRate))
 	net.DefaultInit(initializers.Xavier())

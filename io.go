@@ -3,7 +3,6 @@ package badstudent
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"os/exec"
 	"strconv"
@@ -44,7 +43,7 @@ func Register(fn interface{}) error {
 	case func() Operator:
 		r := t()
 		if r == nil {
-			return ErrRegisterNilReturn 
+			return ErrRegisterNilReturn
 		} else if ops[r.TypeString()] != nil {
 			return RegisterNamePresentError{"Operator", r.TypeString()}
 		}
@@ -136,23 +135,24 @@ func init() {
 	pens = make(map[string]func() Penalty)
 }
 
-type proxy_Network struct {
-	// the IDs of each of the Nodes in the outputs
+type proxyNetwork struct {
 	OutputsID []int
 	NumNodes  int
 	Iter      int
-	CFType    string // the type-string of the cost function
+	CFString  string
+	HPStrings map[string]string
+	PenString string
 }
 
-type proxy_Node struct {
-	Size       int
-	Name       string
-	TypeString string
-	OptString  string            // -> usually nil
-	HPTypes    map[string]string // -> map of names to type-strings
-	PenString  string            // -> equals "" if absent
-	InputsID   []int
-	Delay      int
+type proxyNode struct {
+	Dims      []int
+	Name      string
+	OpString  string
+	OptString string
+	HPStrings map[string]string
+	PenString string
+	InputsID  []int
+	Delay     int
 }
 
 func nodesToIDs(nodes []*Node) []int {
@@ -173,62 +173,151 @@ func idsToNodes(nodesByID []*Node, ids []int) []*Node {
 
 const (
 	main_file string = "main.net"
+	node_ext  string = ".node"
 	cf_ext    string = "cf"
-	typ_ext   string = "typ"
+	op_ext    string = "op"
 	opt_ext   string = "opt"
 	hp_pref   string = "hp_"
 	pen_ext   string = "pen"
 )
 
-func saveJSON(v interface{}, file string) error {
-	f, err := os.Create(file)
+// FileError stores errors from attempting to access files, either to write to them or to read
+// them.
+type FileError struct {
+	Path string
+	Err  string
+}
+
+func (err FileError) Error() string {
+	return err.Err + " at " + err.Path
+}
+
+func saveJSON(v interface{}, path string, addTxt bool) error {
+	if addTxt {
+		path += ".txt"
+	}
+
+	f, err := os.Create(path)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to create file %q\n", file)
+		return FileError{path, "Failed to create file"}
 	}
 	defer f.Close()
 
 	enc := json.NewEncoder(f)
 	if err = enc.Encode(v); err != nil {
-		return errors.Wrapf(err, "Failed to write json to file %q\n", file)
+		return FileError{path, "Failed to encode JSON"}
 	}
 
 	return nil
 }
 
-func loadJSON(v interface{}, file string) error {
-	f, err := os.Open(file)
+func loadJSON(v interface{}, path string, addTxt bool) error {
+	if addTxt {
+		path += ".txt"
+	}
+
+	f, err := os.Open(path)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to open file %q\n", file)
+		return FileError{path, "Failed to open file"}
 	}
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
 	if err = dec.Decode(v); err != nil {
-		return errors.Wrapf(err, "Failed to read json from file %q\n", file)
+		return FileError{path, "Failed to decode JSON"}
 	}
 
 	return nil
 }
 
+func saveElement(v interface{}, path string) error {
+	if st, ok := v.(Storable); ok {
+		if err := st.Save(path); err != nil {
+			return err
+		}
+	} else if j, ok := v.(JSONAble); ok {
+		if err := saveJSON(j.Get(), path, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func loadElement(v interface{}, path string) error {
+	if st, ok := v.(Storable); ok {
+		if err := st.Load(path); err != nil {
+			return err
+		}
+	} else if j, ok := v.(JSONAble); ok {
+		if err := loadJSON(j.Blank(), path, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// FieldIOError is a wrapper for other errors ocurring for saving or loading parts of a Network due
+// to direct interfacing with files.
+type FieldIOError struct {
+	// ContainingStruct indicates which (either Node or Network) the i/o error occured with. Its
+	// value is then either "Network" or "Node"
+	ContainingStruct string
+
+	// Field indicates the field of ContainingStruct that was being saved/loaded. Field will be
+	// equal to an empty string if the thing being saved/loaded is the ContainingStruct itself
+	Field string
+
+	// Op indicates whether the value was being saved or loaded. The value of Op is then either
+	// "save" or "load"
+	Op string
+
+	Err error
+}
+
+func (err FieldIOError) Error() string {
+	if err.Field == "" {
+		return "Failed to " + err.Op + " " + err.ContainingStruct + ": " + err.Err.Error()
+	}
+
+	return "Failed to " + err.Op + " " + err.ContainingStruct + " " + err.Field + ": " + err.Err.Error()
+}
+
 func (net *Network) writeFile(dirPath string) error {
-	p := proxy_Network{
+	p := proxyNetwork{
 		OutputsID: nodesToIDs(net.outputs.nodes),
 		NumNodes:  len(net.nodesByID),
 		Iter:      net.iter,
-		CFType:    net.cf.TypeString(),
+		CFString:  net.cf.TypeString(),
 	}
 
-	if err := saveJSON(p, dirPath + "/" + main_file); err != nil {
-		return err
+	if net.pen != nil {
+		p.PenString = net.pen.TypeString()
 	}
 
-	if st, ok := net.cf.(Storable); ok {
-		if err := st.Save(dirPath + "/" + cf_ext); err != nil {
-			return errors.Wrapf(err, "Failed to save Network CostFunction\n")
+	p.HPStrings = make(map[string]string)
+	for name, hp := range net.hyperParams {
+		p.HPStrings[name] = hp.TypeString()
+	}
+
+	if err := saveJSON(p, dirPath+"/"+main_file, false); err != nil {
+		return FieldIOError{"Network", "", "save", err}
+	}
+
+	if err := saveElement(net.cf, dirPath+"/"+cf_ext); err != nil {
+		return FieldIOError{"Network", "CostFunction", "save", err}
+	}
+
+	if net.pen != nil {
+		if err := saveElement(net.pen, dirPath+"/"+pen_ext); err != nil {
+			return FieldIOError{"Network", "Penalty", "save", err}
 		}
-	} else if j, ok := net.cf.(JSONAble); ok {
-		if err := saveJSON(j.Get(), dirPath + "/" + cf_ext + ".txt"); err != nil {
-			return errors.Wrapf(err, "Failed to save Network CostFunction\n")
+	}
+
+	for name, hp := range net.hyperParams {
+		if err := saveElement(hp, dirPath+"/"+hp_pref+name); err != nil {
+			return FieldIOError{"Network", "HyperParameter (" + name + ")", "save", err}
 		}
 	}
 
@@ -240,275 +329,373 @@ func (n *Node) writeFile(dirPath string) error {
 	if _, err := os.Stat(path); err != nil {
 		// 0700 indicates universal read/write permissions
 		if err = os.MkdirAll(path, 0700); err != nil {
-			return errors.Wrapf(err, "Failed to create save directory for Node %v\n", n)
+			return FileError{path, "Could not make directory to save Node"}
 		}
 	}
 
-	var typStr, optStr string
-	if n.typ != nil {
-		typStr = n.typ.TypeString()
+	/*
+		type proxyNode struct {
+			Dims      []int
+			Name      string
+			OpString  string
+			OptString string
+			HPStrings map[string]string
+			PenString string
+			InputsID  []int
+			Delay     int
+		}
+	*/
+
+	var p proxyNode
+	{
+		p = proxyNode{
+			Dims:  n.values.Dims,
+			Name:  n.name,
+			Delay: n.Delay(),
+		}
+
+		if !n.IsInput() {
+			p.InputsID = nodesToIDs(n.inputs.nodes)
+
+			p.OpString = n.op.TypeString()
+			if n.opt != nil {
+				p.OptString = n.opt.TypeString()
+			}
+		}
+
+		p.HPStrings = make(map[string]string)
+		for name, hp := range n.hyperParams {
+			p.HPStrings[name] = hp.TypeString()
+		}
+
+		if n.pen != nil {
+			p.PenString = n.pen.TypeString()
+		}
 	}
+
+	if err := saveJSON(p, path+node_ext, false); err != nil {
+		return FieldIOError{"Node " + n.String(), "", "save", err}
+	}
+
+	if n.op != nil {
+		if err := saveElement(n.op, path+"/"+op_ext); err != nil {
+			return FieldIOError{"Node " + n.String(), "Operator", "save", err}
+		}
+	}
+
 	if n.opt != nil {
-		optStr = n.opt.TypeString()
-	}
-
-	// map of name to type
-	hpTypes := make(map[string]string)
-	for name, hp := range n.hyperParams {
-		hpTypes[name] = hp.TypeString()
-	}
-
-	pen := ""
-	if n.pen != nil {
-		pen = n.pen.TypeString()
-	}
-
-	p := proxy_Node{
-		Size:       n.Size(),
-		Name:       n.Name(),
-		TypeString: typStr,
-		OptString:  optStr,
-		HPTypes:    hpTypes,
-		PenString:  pen,
-		InputsID:   nodesToIDs(n.inputs.nodes),
-		Delay:      n.Delay(),
-	}
-
-	if err := saveJSON(p, path + ".node"); err != nil {
-		return errors.Wrapf(err, "Failed to save Node\n")
-	}
-
-	if n.typ != nil {
-		if st, ok := n.typ.(Storable); ok {
-			if err := st.Save(path + "/" + typ_ext); err != nil {
-				return errors.Wrapf(err, "Failed to save Operator\n")
-			}
-		} else if j, ok := n.typ.(JSONAble); ok {
-			if err := saveJSON(j.Get(), path + "/" + typ_ext + ".txt"); err != nil {
-				return errors.Wrapf(err, "Failed to save Operator\n")
-			}
-		}
-	}
-
-	if n.opt != nil {
-		if st, ok := n.opt.(Storable); ok {
-			if err := st.Save(path + "/" + opt_ext); err != nil {
-				return errors.Wrapf(err, "Failed to save Optimizer\n")
-			}
-		} else if j, ok := n.opt.(JSONAble); ok {
-			if err := saveJSON(j.Get(), path + "/" + opt_ext + ".txt"); err != nil {
-				return errors.Wrapf(err, "Failed to save Optimizer\n")
-			}
-		}
-	}
-
-	for name, hp := range n.hyperParams {
-		if st, ok := hp.(Storable); ok {
-			if err := st.Save(path + "/" + hp_pref + name); err != nil {
-				return errors.Wrapf(err, "Failed to save HyperParameter (name: %s, type: %s)\n", name, hp.TypeString())
-			}
-		} else if j, ok := hp.(JSONAble); ok {
-			if err := saveJSON(j.Get(), path + "/" + hp_pref + name + ".txt"); err != nil {
-				return errors.Wrapf(err, "Failed to save HyperParameter (name: %s, type: %s)\n", name, hp.TypeString())
-			}
+		if err := saveElement(n.opt, path+"/"+opt_ext); err != nil {
+			return FieldIOError{"Node " + n.String(), "Optimizer", "save", err}
 		}
 	}
 
 	if n.pen != nil {
-		if st, ok := n.pen.(Storable); ok {
-			if err := st.Save(path + "/" + pen_ext); err != nil {
-				return errors.Wrapf(err, "Failed to save Penalty\n")
-			}
-		} else if j, ok := n.pen.(JSONAble); ok {
-			if err := saveJSON(j.Get(), path + "/" + pen_ext + ".txt"); err != nil {
-				return errors.Wrapf(err, "Failed to save Penalty\n")
-			}
+		if err := saveElement(n.pen, path+"/"+pen_ext); err != nil {
+			return FieldIOError{"Node " + n.String(), "Penalty", "save", err}
+		}
+	}
+
+	for name, hp := range n.hyperParams {
+		if err := saveElement(hp, path+"/"+hp_pref+name); err != nil {
+			return FieldIOError{"Node " + n.String(), "HyperParameter (" + name + ")", "save", err}
 		}
 	}
 
 	return nil
 }
 
-// Save saves the Network to a given directory. overwrite indicates whether or not
-// to remove any other files that may already exist there to replace them. The
-// directory should not already exist unless overwrite is true.
-//
-// Save does not error cleanly. If it stops midway through writing the Network, it
-// will leave the files unfinished.
-func (net *Network) Save(dirPath string, overwrite bool) error {
+func (net *Network) Save(path string, overwrite bool) (bool, error) {
 	// check if the folder already exists
-	if _, err := os.Stat(dirPath); err == nil {
+	if _, err := os.Stat(path); err == nil {
 		if !overwrite {
-			return errors.Errorf("Directory %s already exists, overwrite=false", dirPath)
+			return false, nil
 		}
 
-		if err := os.RemoveAll(dirPath); err != nil {
-			return errors.Errorf("Failed to remove pre-existing folder to overwrite")
+		if err := os.RemoveAll(path); err != nil {
+			return false, FileError{path, ""} // failed to remove
 		}
 	}
 
-	// '0700' indicates universal read/write permissions
-	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return errors.Wrapf(err, "Failed to make save directory\n")
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return false, FileError{path, "Failed to create save directory"} // failed to create save dir
 	}
 
-	if err := net.writeFile(dirPath); err != nil {
-		return errors.Wrapf(err, "Failed to save network overview\n")
+	var sucessful bool
+	defer func() {
+		if !sucessful {
+			os.RemoveAll(path)
+		}
+	}()
+
+	if err := net.writeFile(path); err != nil {
+		return false, err
 	}
 
 	for _, n := range net.nodesByID {
-		if err := n.writeFile(dirPath); err != nil {
-			return errors.Wrapf(err, "Failed to save Node %v\n", n)
+		if err := n.writeFile(path); err != nil {
+			return false, err
 		}
 	}
 
-	return nil
+	sucessful = true
+	return true, nil
 }
 
-// Load generates the Network from the provided directory, written to by Save
-func Load(dirPath string) (*Network, error) {
-	// check if the folder exists
-	if _, err := os.Stat(dirPath); err != nil {
-		return nil, errors.Errorf("Containing directory does not exist")
+// NotRegisteredError documents errors from types that have not been registered.
+type NotRegisteredError struct {
+	Typ string
+	Str string
+}
+
+func (err NotRegisteredError) Error() string {
+	return err.Typ + " type \"" + err.Str + "\" has not been registered"
+}
+
+// ConstructionError documents errors occuring from the re-construction of the Network from a saved
+// version.
+type ConstructionError struct {
+	Func     string
+	NodeName string
+	Err      error
+}
+
+func (err ConstructionError) Error() string {
+	if err.NodeName == "" {
+		return "Construction error from " + err.Func + ": " + err.Err.Error()
 	}
 
-	// Load the main network
-	var pNet proxy_Network
-	if err := loadJSON(&pNet, dirPath + "/" + main_file); err != nil {
-		return nil, errors.Wrapf(err, "Failed to load Network overview\n")
+	return "Construction error from " + err.Func + " with Node " + err.NodeName + ": " + err.Err.Error()
+}
+
+// Load generates a Network from a previously saved version.
+func Load(path string) (*Network, error) {
+	// check if the folder exists
+	if _, err := os.Stat(path); err != nil {
+		return nil, FileError{path, "Previously saved directory does not exist"} // containing directory does not exist
+	}
+
+	var pNet proxyNetwork
+	if err := loadJSON(&pNet, path+"/"+main_file, false); err != nil {
+		return nil, FieldIOError{"Network", "", "load", err} // failed to load network overview
 	}
 
 	net := new(Network)
-	pNodes := make([]proxy_Node, pNet.NumNodes)
+	pNodes := make([]proxyNode, pNet.NumNodes)
 	net.iter = pNet.Iter
 
-	// Load the Nodes, make placeholders
+	// Load the Nodes
 	for id := 0; id < pNet.NumNodes; id++ {
-		path := dirPath + "/" + strconv.Itoa(id)
+		path := path + "/" + strconv.Itoa(id) + node_ext
 
-		if err := loadJSON(&pNodes[id], path + ".node"); err != nil {
-			return nil, errors.Wrapf(err, "Failed to read save for Node (id %d)\n", id)
+		if err := loadJSON(&pNodes[id], path, false); err != nil {
+			return nil, FieldIOError{"Node (id: " + strconv.Itoa(id) + ")", "", "load", err} // failed to read save for Node (id %d)
+		}
+	}
+
+	// add all input Nodes, make placeholders for non-inputs
+	for id, pn := range pNodes {
+		var n *Node
+
+		if len(pn.InputsID) == 0 {
+			n = net.AddInput(pn.Dims)
+			if net.Error() != nil {
+				var name string
+				if pn.Name != "" {
+					name = "\"" + pn.Name + "\""
+				} else {
+					name = fmt.Sprintf("<id: %d>", id)
+				}
+
+				return nil, ConstructionError{"AddInput", name, net.Error()}
+			}
+		} else {
+			n = net.Placeholder(pn.Dims)
+			if net.Error() != nil {
+				var name string
+				if pn.Name != "" {
+					name = "\"" + pn.Name + "\""
+				} else {
+					name = fmt.Sprintf("<id: %d, Operator: %s>", id, pn.OpString)
+				}
+
+				return nil, ConstructionError{"Placeholder", name, net.Error()}
+			}
 		}
 
-		net.Placeholder(pNodes[id].Name, pNodes[id].Size)
-		if net.err != nil {
-			return nil, errors.Wrapf(net.err, "Failed to add placeholder for Node %q (id %d) to reconstruct Network\n",
-				pNodes[id].Name, id)
+		if pn.Name != "" {
+			n.SetName(pn.Name)
 		}
 	}
 
 	// replace placeholders
 	for id, n := range net.nodesByID {
-		inputs := idsToNodes(net.nodesByID, pNodes[id].InputsID)
+		if n.IsInput() {
+			continue
+		}
 
-		var typ Operator
-		var opt Optimizer
-		var pen Penalty
-		if len(inputs) > 0 {
-			if ops[pNodes[id].TypeString] == nil {
-				return nil, errors.Errorf("Operator type %q has not been registered", pNodes[id].TypeString)
+		path := path + "/" + strconv.Itoa(id)
+		pn := pNodes[id]
+
+		var name string
+		if pn.Name != "" {
+			name = "\"" + pn.Name + "\""
+		} else {
+			name = fmt.Sprintf("<id: %d, Operator: %s>", id, pn.OpString)
+		}
+
+		// replace Node
+		{
+			var op Operator
+			var opGen func() Operator
+			if opGen = ops[pn.OpString]; opGen == nil {
+				return nil, NotRegisteredError{"Operator", pn.OpString}
+			} else if op = opGen(); op == nil {
+				return nil, ErrRegisterNilReturn
 			}
 
-			typ = ops[pNodes[id].TypeString]()
-			if st, ok := typ.(Storable); ok {
-				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + typ_ext); err != nil {
-					return nil, errors.Wrapf(err, "Failed to Load Operator for Node %q (id %d)\n", pNodes[id].Name, id)
-				}
-			} else if j, ok := typ.(JSONAble); ok {
-				if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + typ_ext + ".txt"); err != nil {
-					return nil, errors.Wrapf(err, "Failed to Load Operator for Node %q (id %d)\n", pNodes[id].Name, id)
-				}
+			if err := loadElement(op, path+"/"+op_ext); err != nil {
+				return nil, FieldIOError{"Node (" + name + ")", "Operator", "load", err}
 			}
 
-			if _, ok := typ.(Adjustable); ok {
-				if opts[pNodes[id].OptString] == nil {
-					return nil, errors.Errorf("Optimizer type %q has not been registered", pNodes[id].OptString)
-				}
+			inputs := idsToNodes(net.nodesByID, pn.InputsID)
+			n.Replace(op, inputs...)
 
-				opt = opts[pNodes[id].OptString]()
-
-				if st, ok := opt.(Storable); ok {
-					if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + opt_ext); err != nil {
-						return nil, errors.Wrapf(err, "Failed to load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
-					}
-				} else if j, ok := opt.(JSONAble); ok {
-					if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + opt_ext + ".txt"); err != nil {
-						return nil, errors.Wrapf(err, "Failed to load Optimizer for Node %q (id %d)\n", pNodes[id].Name, id)
-					}
-				}
-
-				if pNodes[id].PenString != "" {
-					pen = pens[pNodes[id].PenString]()
-					if st, ok := pen.(Storable); ok {
-						if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + pen_ext); err != nil {
-							return nil, errors.Wrapf(err, "Failed to Load Penalty for Node %q (id %d)\n", pNodes[id].Name, id)
-						}
-					} else if j, ok := pen.(JSONAble); ok {
-						if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + pen_ext + ".txt"); err != nil {
-							return nil, errors.Wrapf(err, "Failed to load Penalty for Node %q (id %d)\n", pNodes[id].Name, id)
-						}
-					}
-				}
+			if net.Error() != nil {
+				return nil, ConstructionError{"Replace", name, net.Error()}
 			}
 		}
 
-		n.Replace(typ, inputs...)
-		if net.err != nil {
-			return nil, errors.Wrapf(net.err, "Failed to replace placeholder for Node %q (id %d) to reconstruct Network\n",
-				pNodes[id].Name, id)
-		}
+		// add extras
+		{
+			n.SetDelay(pn.Delay)
 
-		if opt != nil {
-			n.Opt(opt)
-		}
-		if pNodes[id].Delay != 0 {
-			n.SetDelay(pNodes[id].Delay)
-		}
-		if pen != nil {
-			n.SetPenalty(pen)
-		}
+			if pn.OptString != "" {
+				var opt Optimizer
+				var optGen func() Optimizer
+				if optGen = opts[pn.OptString]; optGen == nil {
+					return nil, NotRegisteredError{"Optimizer", pn.OptString}
+				} else if opt = optGen(); opt == nil {
+					return nil, ErrRegisterNilReturn
+				}
 
-		for name, ts := range pNodes[id].HPTypes {
-			if hps[ts] == nil {
-				return nil, errors.Errorf("HyperParameter type %q has not been registered", ts)
+				if err := loadElement(opt, path+"/"+opt_ext); err != nil {
+					return nil, FieldIOError{"Node (" + name + ")", "Optimizer", "load", err}
+				}
+
+				n.Opt(opt)
+
+				// Because Opt will only set net.Error() if opt == nil, and we've already shown
+				// that it's not, we dont' actually need to check whether or not net.Error() is
+				// nil.
 			}
 
-			hp := hps[ts]()
+			if pn.PenString != "" {
+				var pen Penalty
+				var penGen func() Penalty
+				if penGen = pens[pn.PenString]; penGen == nil {
+					return nil, NotRegisteredError{"Penalty", pn.PenString}
+				} else if pen = penGen(); pen == nil {
+					return nil, ErrRegisterNilReturn
+				}
 
-			if st, ok := hp.(Storable); ok {
-				if err := st.Load(dirPath + "/" + strconv.Itoa(id) + "/" + hp_pref + name); err != nil {
-					return nil, errors.Wrapf(err, "Failed to Load HyperParameter %q for Node %q (id %d)\n", ts, n.name, id)
+				if err := loadElement(pen, path+"/"+pen_ext); err != nil {
+					return nil, FieldIOError{"Node (" + name + ")", "Penalty", "load", err}
 				}
-			} else if j, ok := hp.(JSONAble); ok {
-				if err := loadJSON(j.Blank(), dirPath + "/" + strconv.Itoa(id) + "/" + hp_pref + name + ".txt"); err != nil {
-					return nil, errors.Wrapf(err, "Failed to load HyperParameter %q for Node %q (id %d)\n", ts, n.name, id)
-				}
+
+				n.SetPenalty(pen)
+
+				// Because SetPenalty will only set net.Error() if pen == nil, and we've already
+				// shown that it's not, we don't actually need to check whether or not net.Error()
+				// is nil.
 			}
 
-			n.AddHP(name, hp)
-			if net.err != nil {
-				return nil, errors.Wrapf(net.err, "Failed to add HyperParameter %q to Node %q (id %d)\n", ts, n.name, id)
+			for hpName, typ := range pn.HPStrings {
+				var hp HyperParameter
+				var hpGen func() HyperParameter
+				if hpGen = hps[typ]; hpGen == nil {
+					return nil, NotRegisteredError{"HyperParameter (" + hpName + ")", typ}
+				} else if hp = hpGen(); hp == nil {
+					return nil, ErrRegisterNilReturn
+				}
+
+				if err := loadElement(hp, path+"/"+hp_pref+hpName); err != nil {
+					return nil, FieldIOError{"Node (" + name + ")", "HyperParameter (" + hpName + ")", "load", err}
+				}
+
+				n.AddHP(name, hp)
+
+				// AddHP can set net.Error() to one of two errors:
+				//	NilArgError, if hp == nil, or
+				//	ErrHPNameTaken, if name has already been used.
+				// Both of these are not possible at this stage because we've checked for them
+				// already. The name of the HyperParameter cannot be re-used because the map keys
+				// for pn.HPStrings are the names.
 			}
 		}
 	}
 
-	if cfs[pNet.CFType] == nil {
-		return nil, errors.Errorf("CostFunction type %q has not been registered")
+	// set Network penalties and HyperParameters, if it has them:
+	{
+		if pNet.PenString != "" {
+			var pen Penalty
+			var penGen func() Penalty
+			if penGen = pens[pNet.PenString]; penGen == nil {
+				return nil, NotRegisteredError{"Penalty", pNet.PenString}
+			} else if pen = penGen(); pen == nil {
+				return nil, ErrRegisterNilReturn
+			}
+
+			if err := loadElement(pen, path+"/"+pen_ext); err != nil {
+				return nil, FieldIOError{"Network", "Penalty", "load", err}
+			}
+
+			net.SetPenalty(pen)
+
+			// Because SetPenalty will only set net.Error() if pen == nil, and we've already shown
+			// that it's not, we don't actually need to check whether or not net.Error() is nil.
+		}
+
+		for name, typ := range pNet.HPStrings {
+			var hp HyperParameter
+			var hpGen func() HyperParameter
+			if hpGen = hps[typ]; hpGen == nil {
+				return nil, NotRegisteredError{"HyperParameter", typ}
+			} else if hp = hpGen(); hp == nil {
+				return nil, ErrRegisterNilReturn
+			}
+
+			if err := loadElement(hp, path+"/"+hp_pref+name); err != nil {
+				return nil, FieldIOError{"Network", "HyperParameter (" + name + ")", "load", err}
+			}
+
+			net.AddHP(name, hp)
+
+			// AddHP can set net.Error() to one of two errors:
+			//	NilArgError, if hp == nil, or
+			//	ErrHPNameTaken, if name has already been used.
+			// Both of these are not possible at this stage because we've checked for them
+			// already. The name of the HyperParameter cannot be re-used because the map keys
+			// for pn.HPStrings are the names.
+		}
 	}
 
-	cf := cfs[pNet.CFType]()
-	if st, ok := cf.(Storable); ok {
-		if err := st.Load(dirPath + "/" + cf_ext); err != nil {
-			return nil, errors.Wrapf(err, "Failed to Load Network CostFunction\n")
+	// finish up making the Network
+	{
+		var cf CostFunction
+		var cfGen func() CostFunction
+		if cfGen = cfs[pNet.CFString]; cfGen == nil {
+			return nil, NotRegisteredError{"CostFunction", pNet.CFString}
+		} else if cf = cfGen(); cf == nil {
+			return nil, ErrRegisterNilReturn
 		}
-	} else if j, ok := cf.(JSONAble); ok {
-		if err := loadJSON(j.Blank(), dirPath + "/" + cf_ext + ".txt"); err != nil {
-			return nil, errors.Wrapf(err, "Failed to load Network CostFunction\n")
-		}
-	}
 
-	if err := net.finalize(true, cf, idsToNodes(net.nodesByID, pNet.OutputsID)...); err != nil {
-		return nil, errors.Wrapf(err, "Failed to finalize Network\n")
+		if err := loadElement(cf, path+"/"+cf_ext); err != nil {
+			return nil, FieldIOError{"Network", "CostFunction", "load", err}
+		}
+
+		if err := net.finalize(true, cf, idsToNodes(net.nodesByID, pNet.OutputsID)...); err != nil {
+			return nil, ConstructionError{"Finalize", "", err}
+		}
 	}
 
 	return net, nil
@@ -526,14 +713,13 @@ func (net *Network) Graph(path string) error {
 	// dot -Tpdf /dev/stdin -o graph.pdf
 	cmd := exec.Command("dot", "-Tpdf", "/dev/stdin", "-o", path+".pdf")
 
-	// error only occurs if stdin is set or if the process has started
 	writer, err := cmd.StdinPipe()
 	if err != nil {
-		return errors.Wrapf(err, "Failed to set StdinPipe for command\n")
+		return ErrFailedCommand
 	}
 
 	if err := cmd.Start(); err != nil {
-		return errors.Wrapf(err, "Failed to start dot command\n")
+		return ErrFailedCommand // failed to start dot command
 	}
 
 	// write file to pipe
@@ -573,7 +759,7 @@ func (net *Network) Graph(path string) error {
 	}()
 
 	if err := cmd.Wait(); err != nil {
-		return errors.Wrapf(err, "dot command failed\n")
+		return ErrFailedCommand
 	}
 
 	return nil

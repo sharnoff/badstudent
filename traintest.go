@@ -1,94 +1,63 @@
 package badstudent
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 )
 
-// Note: Correct should likely be removed; it is not used.
-
-// Correct adjusts the weights in the network, according to the provided arguments.
-// If 'saveChanges' is true, the adjustments will not be implemented immediately,
-// and will instead wait until AddWeights is called.
-func (net *Network) Correct(inputs, targets []float64, saveChanges bool) (cost float64, outs []float64, err error) {
-
-	if outs, err = net.GetOutputs(inputs); err != nil {
-		err = errors.Wrapf(err, "Getting outputs failed\n")
-		return
-	}
-
-	if err = net.getDeltas(targets); err != nil {
-		err = errors.Wrapf(err, "Getting deltas failed\n")
-		return
-	}
-
-	if err = net.adjust(saveChanges); err != nil {
-		err = errors.Wrapf(err, "Adjusting weights failed\n")
-		return
-	}
-
-	cost = net.cf.Cost(outs, targets)
-	net.iter++
-	return
-}
-
-// Datum is a simple wrapper used to send training samples to the Network
+// Datum is a simple type used to send training samples to the Network
 type Datum struct {
-	// Inputs is the input of the network. It must have the same size as that of the
-	// network's inputs.
+	// Inputs is the input of the network. It must have the same size as that of the network's
+	// inputs.
 	Inputs []float64
 
 	// Outputs is the expected output of the network, given the input.
 	//
-	// For recurrent models, providing nil (or length 0) can be used to signify that
-	// the outputs are not significant.
+	// For recurrent networks, providing nil (or length 0) can be used to signify that the outputs
+	// are not significant, and that the hidden state will be updated to reflect the inputs
 	Outputs []float64
 }
 
-// Fits indicates whether or not a given Datum's dimensions match those of the
-// Network, allowing it to be used for training or testing.
+// Fits indicates whether or not a given Datum's dimensions match those of the Network, allowing it
+// to be used for training or testing.
 func (d Datum) Fits(net *Network) bool {
 	return len(d.Inputs) == net.InputSize() && ((len(d.Outputs) == 0 && net.hasDelay) || len(d.Outputs) == net.OutputSize())
 }
 
-// DataSupplier is the primary method of providing datasets to the Network, either
-// for training or testing.
+// DataSupplier is the primary method of providing datasets to the Network, either for training or
+// testing.
 type DataSupplier interface {
 	// Get returns the next piece of data, given the current iteration.
 	Get(int) (Datum, error)
 
-	// BatchEnded returns whether or not the most recent batch has ended, given the
-	// current iteration. To not use batching, BatchEnded should always return true
-	// (effective mini-batch size of 1).
+	// BatchEnded returns whether or not the most recent batch has ended, given the current
+	// iteration. To not use batching, BatchEnded should always return true (effective mini-batch
+	// size of 1).
 	//
-	// BatchEnded will be called after the last Datum in the batch has been
-	// retrieved. It will not be called if the DataSupplier is being used for
-	// testing.
+	// BatchEnded will be called after the last Datum in the batch has been retrieved. It will not
+	// be called if the DataSupplier is being used for testing.
 	BatchEnded(int) bool
 
-	// DoneTesting indicates whether or not the testing process has finished. This
-	// will only be called if the DataSupplier is actually used for providing
-	// testing data.
+	// DoneTesting indicates whether or not the testing process has finished. This will only be
+	// called if the DataSupplier is actually used for providing testing data.
 	//
 	// DoneTesting is called at the same point as BatchEnded would be.
 	DoneTesting(int) bool
 }
 
-// Sequential builds upon DataSupplier, adding extra functionality for recurrent
-// Networks.
+// Sequential builds upon DataSupplier, adding extra functionality for recurrent Networks.
 type Sequential interface {
 	DataSupplier
 
-	// SetEnded returns whether or not the recurrent sequence has finished, given
-	// the current iteration. The DataSupplier methods BatchEnded and DoneTesting
-	// will only be called when SetEnded returns true.
+	// SetEnded returns whether or not the recurrent sequence has finished, given the current
+	// iteration. The DataSupplier methods BatchEnded and DoneTesting will only be called when
+	// SetEnded returns true.
 	//
-	// SetEnded is always immediately followed by BatchEnded or DoneTesting.
-	// SetEnded can also cause DoneTesting to be ignored or delayed if not the end
-	// of a sequence.
+	// SetEnded is always immediately followed by BatchEnded or DoneTesting. SetEnded can also
+	// cause DoneTesting to be ignored or delayed if not the end of a sequence.
 	SetEnded(int) bool
 }
 
-// A wrapper for sending back the progress of the training or testing
+// Result is a wrapper for sending back the progress of the training or testing
 type Result struct {
 	// The iteration the result is being sent before
 	Iteration int
@@ -104,21 +73,22 @@ type Result struct {
 	IsTest bool
 }
 
+// TrainArgs serves to allow optional arguments to (*Network).Train()
 type TrainArgs struct {
 	TrainData DataSupplier
 
-	// TestData is the source of cross-validation data while training. This can be
-	// nil if ShouldTest is also nil
+	// TestData is the source of cross-validation data while training. This can be nil if
+	// ShouldTest is also nil
 	TestData DataSupplier
 
-	// ShouldTest indicates whether or not testing should be done before the current
-	// iteration. For recurrent Networks, this will only be called in between
-	// sequences (modulus might not always work as intended).
+	// ShouldTest indicates whether or not testing should be done before the current iteration. For
+	// recurrent Networks, this will only be called in between sequences (modulus might not always
+	// work as intended).
 	ShouldTest func(int) bool
 
-	// SendStatus indicates whether or not to send back general information about
-	// the status of the training since the last time 'true' was returned.
-	// SendStatus can be left nil to represent an unconditional false.
+	// SendStatus indicates whether or not to send back general information about the status of the
+	// training since the last time 'true' was returned. SendStatus can be left nil to represent an
+	// unconditional false.
 	//
 	// 'true' will be ignored on iteration 0.
 	SendStatus func(int) bool
@@ -126,21 +96,86 @@ type TrainArgs struct {
 	// improvement note: A method for Network could be added that gives the previous
 	// cost
 
-	// RunCondition will be called at each successive iteration to determine if
-	// training should continue. Training will stop if 'false' is returned.
+	// RunCondition will be called at each successive iteration to determine if training should
+	// continue. Training will stop if 'false' is returned.
 	RunCondition func(int) bool
 
-	// IsCorrect returns whether or not the network outputs are correct, given the
-	// target outputs. In order, it is given: outputs; targets.
+	// IsCorrect returns whether or not the network outputs are correct, given the target outputs.
+	// In order, it is given: outputs; targets.
 	//
 	// The length of both provided slices is guaranteed to be equal.
 	IsCorrect func([]float64, []float64) bool
 
-	// Update is how testing and status updates are returned. If both ShouldTest
-	// and SendData are nil, then Update can also be left nil.
+	// Update is how testing and status updates are returned. If both ShouldTest and SendData are
+	// nil, then Update can also be left nil.
 	Update func(Result)
 }
 
+// TrainContext provides additional context to training/testing-based errors. Iterations are stored
+// across multiple calls to Train()
+type TrainContext struct {
+	Iteration int
+	FromTest  bool
+}
+
+// GetDataError wraps errors from DataSupplier.Get() from (*Network).Train() and (*Network).Test()
+type GetDataError struct {
+	TrainContext
+
+	Err error
+}
+
+func (err GetDataError) Error() string {
+	var test string
+	if err.FromTest {
+		test = "test "
+	}
+
+	return fmt.Sprintf("Failed to get"+test+"data. Iteration: %d. Error: %v.", err.Iteration, err.Err.Error())
+}
+
+// DoesNotFitError results from provided training/testing samples not fitting the dimensions of the
+// Network (i.e. number of inputs/outputs doesn't match) Note: This does not extend to cases where
+// no outputs are given to recurrent Networks in order to signify that they are inconsequential.
+type DoesNotFitError struct {
+	TrainContext
+
+	Net *Network
+	D   Datum
+}
+
+func (err DoesNotFitError) Error() string {
+	testData := "Data "
+	if err.FromTest {
+		testData = "Test data "
+	}
+
+	var erroneous string
+	if len(err.D.Inputs) != err.Net.InputSize() {
+		erroneous += fmt.Sprintf(" Inputs expected %d, got %d.", err.Net.InputSize(), len(err.D.Inputs))
+	}
+
+	if len(err.D.Outputs) != 0 && len(err.D.Outputs) != err.Net.OutputSize() {
+		erroneous += fmt.Sprintf(" Outputs expected %d, got %d.", err.Net.OutputSize(), len(err.D.Outputs))
+	}
+
+	return fmt.Sprintf(testData+"from Iteration %d didn't match Network dimensions.%s", err.Iteration, erroneous)
+}
+
+// Train does what it says. It trains the Network following the conditions laid out in the
+// arguments provided.
+//
+// Train has several error conditions:
+//	(0) args.Runcondition == nil;
+//	(1) args.TrainData == nil;
+//	(2) args.TrainData is not sequential but Network has delay;
+//	(3) args.TestData is not sequential but Network has delay;
+//	(4) args.ShouldTest != nil but args.TestData == nil;
+//	(5) Failures to run TrainData.Get() or TestData.Get();
+//	(6) Data provided by Get() doesn't fit Network;
+// (0) and (1) return type NilArgError, (2) and (3) return ErrTrainNotSequential and
+// ErrTestNotSequential, respectively. (4) returns ErrShouldTestButNil, (5) gives type
+// GetdataError, and (6) returns type DoesNotFitError.
 func (net *Network) Train(args TrainArgs) error {
 	// handle error cases and set defaults
 	var trainSeq Sequential
@@ -150,22 +185,22 @@ func (net *Network) Train(args TrainArgs) error {
 		}
 
 		if args.TrainData == nil {
-			return errors.Errorf("TrainData is nil")
+			return NilArgError{"TrainData"}
 		}
 
 		var ok bool
 		if trainSeq, ok = args.TrainData.(Sequential); net.hasDelay && !ok {
-			return errors.Errorf("Net has delay; TrainData is not sequential")
+			return ErrTrainNotSequential
 		}
 
 		if args.TestData == nil {
 			if args.ShouldTest != nil {
-				return errors.Errorf("TestData is nil but ShouldTest is not")
+				return ErrShouldTestButNil
 			} else {
 				args.ShouldTest = func(i int) bool { return false }
 			}
 		} else if _, ok = args.TestData.(Sequential); net.hasDelay && !ok {
-			return errors.Errorf("Net has delay; TestData is not sequential")
+			return ErrTestNotSequential
 		}
 
 		if args.SendStatus == nil {
@@ -173,7 +208,7 @@ func (net *Network) Train(args TrainArgs) error {
 		}
 
 		if args.RunCondition == nil {
-			return errors.Errorf("RunCondition is nil")
+			return NilArgError{"RunCondition"}
 		}
 
 		if args.IsCorrect == nil {
@@ -181,8 +216,7 @@ func (net *Network) Train(args TrainArgs) error {
 		}
 	}
 
-	// This does overwrite any correction done independently by Correct, but that
-	// should (hopefully) not matter
+	net.longIter += net.iter
 	net.iter = 0
 
 	var statusCost, statusCorrect float64
@@ -214,7 +248,7 @@ func (net *Network) Train(args TrainArgs) error {
 			} else {
 				cost, correct, err := net.Test(args.TestData, args.IsCorrect)
 				if err != nil {
-					return errors.Wrapf(err, "Testing on iteration %d failed\n", net.iter)
+					return err
 				}
 
 				r := Result{
@@ -236,15 +270,18 @@ func (net *Network) Train(args TrainArgs) error {
 
 		d, err := args.TrainData.Get(net.iter)
 		if err != nil {
-			return errors.Wrapf(err, "Failed to get training data on iteration %d\n", net.iter)
+			return GetDataError{TrainContext{net.iter, false}, err}
 		} else if !d.Fits(net) {
-			return errors.Errorf("Training data for iteration %d does not fit Network", net.iter)
+			return DoesNotFitError{TrainContext{net.iter, false}, net, d}
 		}
 
-		outs, err := net.GetOutputs(d.Inputs)
-		if err != nil {
-			return errors.Wrapf(err, "Failed to get Network outputs on iteration %d\n", net.iter)
-		}
+		// GetOutputs will return an error in one of two conditions:
+		// (0) If the Network has not been finalized (which we know is false because we already
+		// checked that), and (1) if the number of inputs doesn't match Network inputs. This cannot
+		// be the case (even with multithreading) because we just checked that.
+		//
+		// Therefore, we can discard the (im)possible error
+		outs, _ := net.GetOutputs(d.Inputs)
 
 		var cost float64
 		var correct bool
@@ -256,14 +293,10 @@ func (net *Network) Train(args TrainArgs) error {
 		endBatch := args.TrainData.BatchEnded(net.iter)
 
 		if !net.hasDelay {
-			if err := net.getDeltas(d.Outputs); err != nil {
-				return errors.Errorf("Failed to get network deltas on iteration %d\n", net.iter)
-			}
+			net.getDeltas(d.Outputs)
 
-			saveChanges := net.hasSavedChanges || !endBatch
-			if err = net.adjust(saveChanges); err != nil {
-				return errors.Wrapf(err, "Failed to adjust network on iteration %d\n", net.iter)
-			}
+			// saveChanges = net.hasSavedChanges || !endBatch
+			net.adjust(net.hasSavedChanges || !endBatch)
 
 			if endBatch && net.hasSavedChanges {
 				net.AddWeights()
@@ -272,9 +305,9 @@ func (net *Network) Train(args TrainArgs) error {
 			targets = append(targets, d.Outputs)
 
 			if trainSeq.SetEnded(net.iter) {
-				if err := net.adjustRecurrent(targets, !(endBatch || batchNext)); err != nil {
-					return errors.Wrapf(err, "Failed to adjust recurrent after end of sequence (iteration %d)\n", net.iter)
-				}
+
+				// saveChanges = (endBatch || batchNext)
+				net.adjustRecurrent(targets, !(endBatch || batchNext))
 
 				targets = nil
 				betweenSequences = true
@@ -309,11 +342,21 @@ func (net *Network) Train(args TrainArgs) error {
 	return nil
 }
 
+// Test will test the Network on the supplied Data and function for determining whether or not the
+// outputs are correct. Test returns (in order) the average cost of the outputs and the percent of
+// the outputs that are correct.
+//
+// Test has several possible error conditions:
+//	(0) If 'data' is not Sequential, but the Network has delay: ErrTestNotSequential;
+//	(1) Failures in data.Get(): type GetDataError;
+//	(2) If !data.Get(i).Fits(net): type DoesNotFitError;
+// Test also assumes that 'data' is non-nil, and will panic (without a particular error) if that
+// interface is nil.
 func (net *Network) Test(data DataSupplier, isCorrect func([]float64, []float64) bool) (float64, float64, error) {
 	var ok bool
 	var dataSeq Sequential
 	if dataSeq, ok = data.(Sequential); net.hasDelay && !ok {
-		return 0, 0, errors.Errorf("Network has delay but data is not sequential")
+		return 0, 0, ErrTestNotSequential
 	}
 
 	var avgCost, avgCorrect float64
@@ -344,15 +387,14 @@ func (net *Network) Test(data DataSupplier, isCorrect func([]float64, []float64)
 
 		d, err := data.Get(testSize)
 		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Failed to get test sample %d\n", testSize)
+			return 0, 0, GetDataError{TrainContext{net.iter, true}, err}
 		} else if !d.Fits(net) {
-			return 0, 0, errors.Errorf("Test sample %d does not fit Network dimensions\n", testSize)
+			return 0, 0, DoesNotFitError{TrainContext{net.iter, true}, net, d}
 		}
 
-		outs, err := net.GetOutputs(d.Inputs)
-		if err != nil {
-			return 0, 0, errors.Wrapf(err, "Failed to get Network outputs with test sample %d\n", testSize)
-		}
+		// for the same reasons as outlined in (*Network).Train(), we can ignore the error output
+		// from GetOutputs.
+		outs, _ := net.GetOutputs(d.Inputs)
 
 		if len(d.Outputs) == 0 {
 			continue
@@ -399,23 +441,37 @@ func (s internalSequential) SetEnded(iter int) bool {
 	return s.setEnded(iter)
 }
 
-// Data converts a 3D dataset of float64 to a DataSupplier, which can be used for
-// training or testing. dataset indexing is: [data index][inputs, outputs][values]
+type DataMissingError struct {
+	Index int
+	Vs    [][]float64
+}
+
+func (err DataMissingError) Error() string {
+	return fmt.Sprintf("Dataset missing data at index %d: len(data[%d])=%d, should be 2", err.Index, err.Index, len(err.Vs))
+}
+
+// Data converts a 3D dataset of float64 to a DataSupplier, which can be used for training or
+// testing. dataset indexing is: [data index][inputs, outputs][values]
 //
-// N.B.: Data does not check if the data fit a certain network; that will be done
-// during training/testing
+// N.B.: Data does not check if the data fit a certain network; that will be done during
+// training/testing
+//
+// Data has a few error conditions:
+//	(0) If len(dataset) == 0, ErrNoData;
+//	(1) If batchSize < 1, ErrSmallBatchSize;
+//	(2) If len(dataset[i]) < 2, type DataMissingError;
 func Data(dataset [][][]float64, batchSize int) (DataSupplier, error) {
 	d := dataset
 	if len(d) == 0 {
-		return nil, errors.Errorf("dataset has no data (len == 0)")
+		return nil, ErrNoData
 	} else if batchSize < 1 {
-		return nil, errors.Errorf("batch size must be >= 1 (%d)", batchSize)
+		return nil, ErrSmallBatchSize
 	}
 
 	// check we won't get indexes out of bounds
 	for i := range d {
 		if len(d[i]) < 2 {
-			return nil, errors.Errorf("dataset lacks required data at index %d (len([%d]) < 2)", i, i)
+			return nil, DataMissingError{i, d[i]}
 		}
 	}
 
@@ -431,12 +487,15 @@ func Data(dataset [][][]float64, batchSize int) (DataSupplier, error) {
 	return is, nil
 }
 
-// SeqData converts a 3D dataset of float64 to a DataSupplier that is also
-// Sequential. SeqData runs Data before attaching an additional method to satisfy
-// Sequential, so arguments must follow the same format.
+// SeqData converts a 3D dataset of float64 to a DataSupplier that is also Sequential. SeqData runs
+// Data before attaching an additional method to satisfy Sequential, so arguments must follow the
+// same format.
+//
+// SeqData returns the same errors that Data() returns, and will additionally return
+// ErrSmallSetSize if setSize < 1.
 func SeqData(dataset [][][]float64, batchSize, setSize int) (DataSupplier, error) {
 	if setSize < 1 {
-		return nil, errors.Errorf("setSize must be >= 1 (%d)", setSize)
+		return nil, ErrSmallSetSize
 	}
 
 	ds, err := Data(dataset, batchSize)

@@ -7,8 +7,7 @@ import (
 
 type mse bool
 
-// MSE returns the mean squared error cost function, which implements
-// badstudent.CostFunction.
+// MSE returns the mean squared error cost function, which implements badstudent.CostFunction.
 func MSE() *mse {
 	m := mse(false)
 	return &m

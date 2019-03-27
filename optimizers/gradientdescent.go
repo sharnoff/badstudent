@@ -8,11 +8,11 @@ import (
 
 type sgd int8
 
-// SGD returns the gradient descent Optimzier. SGD requires the hyperparameter
-// "learning-rate" > 0, and nothing else.
+// SGD returns the gradient descent Optimzier. SGD requires the hyperparameter "learning-rate" > 0,
+// and nothing else.
 //
-// The result of SGD implements badstudent.Optimzier, and is the default default
-// Optimizer at startup, until something else is assigned.
+// The result of SGD implements badstudent.Optimzier, and is the default default Optimizer at
+// startup, until something else is assigned.
 func SGD() sgd {
 	return sgd(0)
 }

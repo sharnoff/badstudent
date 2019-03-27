@@ -8,8 +8,8 @@ type random struct {
 	RNG
 }
 
-// Random returns an Initializer that uses the provided RNG to generate the weights.
-// There is no scaling beyond that of the RNG.
+// Random returns an Initializer that uses the provided RNG to generate the weights. There is no
+// scaling beyond that of the RNG.
 func Random(g RNG) random {
 	return random{g}
 }

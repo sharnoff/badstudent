@@ -4,10 +4,10 @@ import (
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/costfuncs"
 	"github.com/sharnoff/badstudent/hyperparams"
-	"github.com/sharnoff/badstudent/initializers"
+	_ "github.com/sharnoff/badstudent/initializers"
 	"github.com/sharnoff/badstudent/operators"
 	"github.com/sharnoff/badstudent/optimizers"
-	"github.com/sharnoff/badstudent/penalties"
+	_ "github.com/sharnoff/badstudent/penalties"
 
 	"fmt"
 	"time"
@@ -18,7 +18,7 @@ const (
 	testFrequency   int = 1000
 
 	// main hyperparameters
-	learningRate  float64 = 0.1
+	learningRate  float64 = 0.5
 	batchSize     int     = 1
 	maxIterations int     = 10000
 
@@ -77,7 +77,7 @@ func test(net *bs.Network, dataset [][][]float64) {
 func save(net *bs.Network) {
 	fmt.Println("Saving...")
 	path := "xor save"
-	if err := net.Save(path, true); err != nil {
+	if _, err := net.Save(path, true); err != nil {
 		panic(err.Error())
 	}
 	fmt.Println("Done!")
@@ -103,37 +103,37 @@ func main() {
 
 	net := new(bs.Network)
 	fmt.Println("Setting up network...")
-	/*{
-		l := net.Add("input", nil, 2)
-		l = net.Add("hidden neurons", operators.Neurons(), 3, l).Opt(optimizers.SGD())
-		l = net.Add("hidden logistic", operators.Logistic(), 3, l)
-		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD())
-		l = net.Add("output logistic", operators.Logistic(), 1, l)
+	{
+		l := net.AddInput([]int{2}).SetName("input")
+		l = net.Add(operators.Neurons(3), l).Opt(optimizers.SGD()).SetName("hidden neurons")
+		l = net.Add(operators.Logistic(), l).SetName("hidden logistic")
+		l = net.Add(operators.Neurons(1), l).Opt(optimizers.SGD()).SetName("output neurons")
+		l = net.Add(operators.Logistic(), l).SetName("output logistic")
 
 		net.AddHP("learning-rate", hyperparams.Constant(learningRate))
 		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
 			panic(err.Error())
 		}
-	}*/
-	{
-		l := net.Add("input", nil, 2)
-		loop := net.Placeholder("loop", 1)
-		loopAF := net.Add("loop logistic", operators.Logistic(), 1, loop)
+	}
+	/*{
+		l := net.AddInput([]int{2}).SetName("input")
+		loop := net.Placeholder([]int{1}).SetName("loop")
+		loopAF := net.Add(operators.Logistic(), loop).SetName("loop logistic")
 
-		l = net.Add("hidden layer neurons", operators.Neurons(), 2, l, loopAF).Opt(optimizers.SGD())
-		l = net.Add("hidden layer logistic", operators.Logistic(), 2, l)
+		l = net.Add(operators.Neurons(2), l, loopAF).SetName("hidden layer neurons").Opt(optimizers.SGD())
+		l = net.Add(operators.Logistic(), l).SetName("hidden layer logistic")
 
-		loop.Replace(operators.Neurons(), l).SetDelay(1).Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.01))
+		loop.Replace(operators.Neurons(1), l).SetDelay(1).Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.01))
 
-		l = net.Add("output neurons", operators.Neurons(), 1, l).Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.001))
-		l = net.Add("output logistic", operators.Logistic(), 1, l)
+		l = net.Add(operators.Neurons(1), l).SetName("output neurons").Opt(optimizers.SGD()).SetPenalty(penalties.ElasticNet(0.5, 0.001))
+		l = net.Add(operators.Logistic(), l).SetName("output logistic")
 
 		net.DefaultInit(initializers.Xavier())
 		net.AddHP("learning-rate", hyperparams.Step(learningRate).Add(5000, learningRate / 10))
 		if err := net.Finalize(costfuncs.MSE(), l); err != nil {
 			panic(err.Error())
 		}
-	}
+	}*/
 	fmt.Println("Done!")
 
 	train(net, dataset)

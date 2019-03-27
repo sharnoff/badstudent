@@ -1,9 +1,8 @@
 package badstudent
 
 import (
-	"github.com/pkg/errors"
 	"github.com/sharnoff/badstudent/utils"
-	"runtime"
+	"fmt"
 )
 
 type status int8
@@ -29,14 +28,41 @@ func (net *Network) ClearDelays() {
 	for _, n := range net.nodesByID {
 		for i := 0; i < cap(n.delay); i++ {
 			<-n.delay
-			n.delay <- make([]float64, len(n.values))
+			n.delay <- make([]float64, n.values.Size())
 
 			<-n.delayDeltas
-			n.delayDeltas <- make([]float64, len(n.values))
+			n.delayDeltas <- make([]float64, n.values.Size())
 		}
 
 		n.storedValues = nil
 	}
+}
+
+// DoesNotAffectOutputsError results from one (or more) Node not having an output path to the
+// Network outputs.
+type DoesNotAffectOutputsError struct {
+	N *Node
+}
+
+func (err DoesNotAffectOutputsError) Error() string {
+	return fmt.Sprintf("Node %v does not affect outputs", err.N)
+}
+
+// InstantCycleError is a result of a zero-delay cycle in a network, i.e. at least one Node
+// recieves input from itself with no delay.
+type InstantCycleError struct {
+	// Stack is the list of Nodes that form the cycle, with the first Node reported at both the
+	// start and the end.
+	Stack []*Node
+}
+
+func (err InstantCycleError) Error() string {
+	list := "[" + err.Stack[len(err.Stack)-1].String() + "]"
+	for i := len(err.Stack) - 2; i >= 0; i-- {
+		list += " -> [" + err.Stack[i].String() + "]"
+	}
+
+	return "Network contains zero-delay cycle: " + list
 }
 
 // Checks:
@@ -44,6 +70,8 @@ func (net *Network) ClearDelays() {
 // * there are no loops with zero delay
 // Determines:
 // * each node's need for calculating input deltas
+//
+// returns DoesNotAffectOutputsError or InstantCycleError
 func (net *Network) checkGraph() error {
 	if net.stat >= finalized {
 		return nil
@@ -59,10 +87,12 @@ func (net *Network) checkGraph() error {
 
 			n.completed = true
 
-			for _, in := range n.inputs.nodes {
-				mark(in)
+			if !n.IsInput() {
+				for _, in := range n.inputs.nodes {
+					mark(in)
+				}
 			}
-
+			
 			return
 		}
 
@@ -74,7 +104,7 @@ func (net *Network) checkGraph() error {
 		// If any Nodes don't affect outputs, return error
 		for _, n := range net.nodesByID {
 			if n.completed == false {
-				return errors.Errorf("Node %v does not affect Network outputs", n)
+				return DoesNotAffectOutputsError{n}
 			}
 		}
 
@@ -83,10 +113,10 @@ func (net *Network) checkGraph() error {
 
 	// Check that there are no loops with zero delay, from each Node to itself
 	if net.mayHaveLoop {
-		var check func(*Node) error
+		var check func(*Node) bool
 
 		for _, root := range net.nodesByID {
-			if num(root.inputs) == 0 {
+			if root.IsInput() || num(root.inputs) == 0 {
 				// this node can't recieve itself as input (directly or indirectly)
 				// if it has no inputs
 				continue
@@ -99,32 +129,37 @@ func (net *Network) checkGraph() error {
 				continue
 			}
 
-			check = func(n *Node) error {
+			// only used when check returns false
+			var stack []*Node
+
+			check = func(n *Node) bool {
 				if n.completed {
-					return nil
+					return true
 				} else if n.HasDelay() {
 					// cannot be part of a 0-delay loop
-					return nil
+					return true
 				}
 
 				if n == root {
-					return errors.Errorf("Node %v receives input from itself with no delay", root)
+					stack = []*Node{n}
+					return false
 				} else {
 					n.completed = true
 
 					for _, out := range n.outputs.nodes {
-						if err := check(out); err != nil {
-							return errors.Wrapf(err, "%v to", n)
+						if !check(out) {
+							stack = append(stack, n)
+							return false
 						}
 					}
 
-					return nil
+					return true
 				}
 			}
 
 			for _, out := range root.outputs.nodes {
-				if err := check(out); err != nil {
-					return err
+				if !check(out) {
+					return InstantCycleError{stack}
 				}
 			}
 
@@ -186,41 +221,52 @@ func (net *Network) checkGraph() error {
 	return nil
 }
 
+// setValues does not check length
 func (n *Node) setValues(values []float64) {
 	if n.group == nil {
-		n.values = values
+		n.values.Values = values
 	} else {
-		copy(n.values, values)
+		copy(n.values.Values, values)
 	}
 }
 
+// These are completely arbitrary.
 const (
-	threadsPerCPU        int = 2
-	threadSizeMultiplier int = 10
+	threadsPerCPU int = 2
+	opsPerThread  int = 10
 )
 
-func (n *Node) calculateValues(vs []float64) {
+// Assumes n is NOT an input Node
+func (n *Node) calculateValues() {
 	if n.lyr != nil {
-		n.lyr.Evaluate(n, vs)
-	} else { // n.el must not be nil in order for n.typ to be valid
-		inputs := n.CopyOfInputs()
-
-		f := func(i int) {
-			n.values[i] = n.el.Value(inputs[i], i)
-		}
-
-		opsPerThread := runtime.NumCPU() * threadSizeMultiplier
-		utils.MultiThread(0, n.Size(), f, opsPerThread, threadsPerCPU)
+		n.lyr.Evaluate(n, n.values.Values)
+		return
 	}
+
+	// we can assume n.elem != nil because the Operator would otherwise not be valid
+	inputs := n.AllInputs()
+
+	f := func(i int) {
+		n.values.Values[i] = n.elem.Value(inputs[i], i)
+	}
+
+	utils.MultiThread(0, n.Size(), f, opsPerThread, threadsPerCPU)
 }
 
-// Note: this is only really applicable for input Nodes
+// isGettingDeltas is used for determining, during evaluation, whether or not push or pull from
+// delay.
+func (net *Network) isGettingDeltas() bool {
+	return net.stat >= evaluated
+}
+
+// This function is a helper for adding clarity to *Node.evaluate()
 func (n *Node) storeValues() {
 	vs := make([]float64, n.Size())
-	copy(vs, n.values)
+	copy(vs, n.values.Values)
 	n.storedValues = append(n.storedValues, vs)
 }
 
+// This function is a helper for adding clarity to *Node.evaluate()
 func (n *Node) setFromStored() {
 	n.setValues(n.storedValues[len(n.storedValues)-1])
 	n.storedValues = n.storedValues[:len(n.storedValues)-1]
@@ -257,16 +303,15 @@ func (n *Node) evaluate() {
 		in.evaluate()
 	}
 
-	values := n.values
 	if n.HasDelay() {
-		values = make([]float64, len(n.values))
+		n.values.Values = make([]float64, n.values.Size())
 	}
 
-	n.calculateValues(values)
+	n.calculateValues()
 
 	if n.HasDelay() && !n.host.isGettingDeltas() {
-		n.delay <- values
-		n.storedValues = append(n.storedValues, values)
+		n.delay <- n.values.Values
+		n.storedValues = append(n.storedValues, n.values.Values)
 	}
 
 	// if we're backpropagating, don't worry about setting values; they were
@@ -275,15 +320,14 @@ func (n *Node) evaluate() {
 	n.completed = true
 }
 
-// Changes the values of the Nodes so that they accurately reflect the inputs
+// evaluate updates the values of every Node to reflect the inputs. If the Network is not recurrent
+// and has already been evaluated, it will do nothing.
 //
-// 'recurrent' forces ignoring avoiding repetition if net.stat >= evaluated, if true
-//
-// returns error iff the network has not been finalized
-func (net *Network) evaluate(recurrent bool) error {
+// evaluate will return ErrNetNotFinalized if the Network has not been finalized.
+func (net *Network) evaluate() error {
 	if net.stat < finalized {
-		return errors.Errorf("Network is not complete")
-	} else if !recurrent && net.stat >= evaluated {
+		return ErrNetNotFinalized
+	} else if !net.hasDelay && net.stat >= evaluated {
 		return nil
 	}
 
@@ -297,73 +341,77 @@ func (net *Network) evaluate(recurrent bool) error {
 	return nil
 }
 
+// calculateInputDeltas is a helper function that does what it says.
 func (n *Node) calculateInputDeltas() {
 	if n.lyr != nil {
 		ds := n.lyr.InputDeltas(n)
 		n.inputs.addDeltas(ds)
-	} else {
-		// could be improved to only calculate for inputs that need deltas
-		start := 0
-		for i, in := range n.inputs.nodes {
-			if len(in.deltas) == 0 {
-				continue
-			}
 
-			end := start + n.inputs.nodes[i].Size()
+		return
+	}
 
-			var ds []float64
-			if in.HasDelay() {
-				ds = in.tempDelayDeltas
-			} else {
-				ds = in.deltas
-			}
+	start := 0
+	for _, in := range n.inputs.nodes {
+		end := start + in.Size()
 
-			f := func(x int) {
-				ds[x-start] += n.el.Deriv(n, x) * n.deltas[x]
-			}
-
-			opsPerThread := runtime.NumCPU() * threadSizeMultiplier
-			utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
-
+		// If a Node does not need its deltas calculated, len(deltas) will be equal to zero.
+		if len(in.deltas) == 0 {
 			start = end
+			continue
 		}
+
+		var ds []float64
+		if in.HasDelay() {
+			ds = in.tempDelayDeltas
+		} else {
+			ds = in.deltas
+		}
+
+		f := func(x int) {
+			ds[x-start] += n.elem.Deriv(n, x) * n.deltas[x]
+		}
+
+		utils.MultiThread(start, end, f, opsPerThread, threadsPerCPU)
+
+		start = end
 	}
 }
 
-// can only be called by (*Network).getDeltas()
-// recurses towards outputs, even if calculating input deltas is unnecessary
+// inputDeltas is only called by (*Network).getDeltas(). This will recurse upwards (towards
+// outputs) through the Network.
 func (n *Node) inputDeltas() {
 	if n.completed {
 		return
-	} else if !n.calcInDeltas {
-		// recurse towards outputs
-		for _, o := range n.outputs.nodes {
-			o.inputDeltas()
+	}
+
+	// For Nodes with delay, we need to calculate their input deltas first in order to avoid
+	// recursive loops. We assume that nodes with delay have had their various deltas prepared
+	// already.
+	// Nodes without delay are simple; we get their outputs to calculate their deltas, and then
+	// they [the root node] calculate their own.
+
+	if n.HasDelay() {
+		if n.calcInDeltas {
+			n.calculateInputDeltas()
 		}
 
 		n.completed = true
 	}
 
-	if num(n.outputs) != 0 && n.Delay() == 0 {
-		// make sure that this node's deltas are calculated.
-		// if it's an output, they have already been added to by the network
-		for _, o := range n.outputs.nodes {
-			o.inputDeltas()
-		}
+	for _, o := range n.outputs.nodes {
+		o.inputDeltas()
 	}
 
-	n.calculateInputDeltas()
+	if !n.HasDelay() && n.calcInDeltas {
+		n.calculateInputDeltas()
+	}
+
 	n.completed = true
 }
 
-// assumes len(targets) == net.OutputSize()
-func (net *Network) getDeltas(targets []float64) error {
-	// initial conditions
-	if net.stat < evaluated {
-		return errors.Errorf("Internal error: Network has not been evaluated")
-	}
-
-	// reset deltas
+// assumes len(targets) == net.OutputSize(), net.stat >= evaluated
+func (net *Network) getDeltas(targets []float64) {
+	// reset deltas. For nodes without a need to calculate deltas, this will keep len(deltas) = 0.
 	for _, n := range net.nodesByID {
 		if n.HasDelay() {
 			n.tempDelayDeltas = make([]float64, len(n.deltas))
@@ -399,55 +447,29 @@ func (net *Network) getDeltas(targets []float64) error {
 
 	net.stat = deltas
 	net.resetCompletion()
-	return nil
+	return
 }
 
-// only accurate while there is some calculation happening
-func (net *Network) isGettingDeltas() bool {
-	return net.stat >= evaluated
-}
-
-// assumes len(targets[n]) == net.OutputSize()
-func (net *Network) adjustRecurrent(targets [][]float64, saveChanges bool) error {
-	// Note: there was previously a line here, with unknown purpose:
-	// net.stat = evaluated
-	// with the comment:
-	// // unsafe setting, but should practically be fine
-	//
-	// Additionally, the previous version bypassed getDeltas(), but this does not.
-
-	if net.stat < finalized { // may run into issues if net.stat = finalized
-		return errors.Errorf("Network is not complete")
-	}
-
+// Assumptions:
+//	* net.stat >= finalized
+//	* len(targets[n]) == net.OutputSize(), for all n in range len(targets)
+func (net *Network) adjustRecurrent(targets [][]float64, saveChanges bool) {
 	for i := len(targets) - 1; i >= 0; i-- {
-		if err := net.evaluate(true); err != nil {
-			// this error should never occur
-			return errors.Wrapf(err, "Failed to evaluate network with targets[%d]\n", i)
-		}
+		net.evaluate()
 
-		if err := net.getDeltas(targets[i]); err != nil {
-			return errors.Wrapf(err, "Failed to get deltas of network with targets[%d]\n", i)
-		}
+		net.getDeltas(targets[i])
 
-		if err := net.adjust(true); err != nil {
-			return errors.Wrapf(err, "Failed to adjust network with targets[%d]\n", i)
-		}
+		// we use saveChanges=true here to prevent issues with
+		net.adjust(true)
 	}
 
 	if !saveChanges {
 		net.AddWeights()
 	}
-
-	return nil
 }
 
-// does not use completion. There is no possibility of overlap
-func (net *Network) adjust(saveChanges bool) error {
-	if net.stat < deltas {
-		return errors.Errorf("Internal error: Network has not had deltas calculated")
-	}
-
+// does not use completion, as it iterates through every Node directly.
+func (net *Network) adjust(saveChanges bool) {
 	for _, n := range net.nodesByID {
 		n.adjust(saveChanges)
 	}
@@ -456,7 +478,7 @@ func (net *Network) adjust(saveChanges bool) error {
 		net.hasSavedChanges = true
 	}
 
-	return nil
+	return
 }
 
 func (n *Node) adjust(saveChanges bool) {
@@ -482,7 +504,8 @@ func (n *Node) adjust(saveChanges bool) {
 	n.opt.Run(n, adj, w)
 }
 
-// penAdj serves to 
+// penAdj is a wrapper for the usual Adjustable found in Nodes, to allow for the same types of
+// interaction, but with added penalties for each weight.
 type penAdj struct {
 	Adjustable
 }
@@ -511,7 +534,6 @@ func (n *Node) addWeights() {
 		ws[i] += n.delayedWeights[i]
 	}
 
-	opsPerThread := runtime.NumCPU() * threadSizeMultiplier
 	utils.MultiThread(0, len(ws), f, opsPerThread, threadsPerCPU)
 	n.delayedWeights = make([]float64, len(ws))
 }
