@@ -4,6 +4,7 @@ import (
 	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
+	"github.com/sharnoff/tensors"
 )
 
 type convConstructor struct {
@@ -29,15 +30,15 @@ type conv struct {
 	Padding      []int
 	PaddingValue float64
 
-	// always either 0 or 1. It is represented as an integer to make the math easier
-	// and to reduce the number of necessary conditionals
+	// always either 0 or 1. It is represented as an integer to make the math easier and to reduce
+	// the number of necessary conditionals
 	NumBiases int
 
 	// the value multiplied by bias
 	Bias float64
 
-	// weights are stored by the output value they correspond to, with the smaller
-	// filter indexes within. Biases are appended to the end.
+	// weights are stored by the output value they correspond to, with the smaller filter indexes
+	// within. Biases are appended to the end.
 	Ws []float64
 }
 
@@ -45,13 +46,13 @@ type conv struct {
 const default_depth int = 1
 const default_paramShare bool = false
 
-// Conv returns a typical convolutional function with weights, available for any
-// number of dimensions, which implements badstudent.Operator.
+// Conv returns a typical convolutional function with weights, available for any number of
+// dimensions, which implements badstudent.Operator.
 //
-// Conv does not return a completed Operator, however. The methods InputDims and
-// Filter must be called in order to provide enough information to Finalize the
-// Operator. Other methods can be called to to further customize it -- they return
-// *conv and do not check for errors, so they can be chained.
+// Conv does not return a completed Operator, however. The methods InputDims and Filter must be
+// called in order to provide enough information to Finalize the Operator. Other methods can be
+// called to to further customize it -- they return *conv and do not check for errors, so they can
+// be chained.
 func Conv() *conv {
 	c := new(conv)
 	c.Dep = default_depth
@@ -67,14 +68,12 @@ func Conv() *conv {
 // Customization functions
 // ***************************************************
 
-// Dims sets the output dimensions of the convolution Operator. It does not check
-// that the dimensions are valid until it is Finalized. Dims will panic if called
-// after the Operator has been finalized. Depth does not need to be included as a
-// dimension in Dims. If Depth > 1, Dims will have an appended dimension of value
-// equal to Depth.
+// Dims sets the output dimensions of the convolution Operator. It does not check that the
+// dimensions are valid until it is Finalized. Dims will panic if called after the Operator has
+// been finalized. Depth does not need to be included as a dimension in Dims. If Depth > 1, Dims
+// will have an appended dimension of value equal to Depth.
 //
-// Dims is optional, as it can be calculated from other information, but it can also
-// be provided.
+// Dims is optional, as it can be calculated from other information, but it can also be provided.
 //
 // If any dimensions collapse to a size of 1, they must still be included.
 func (c *conv) Dims(dims ...int) *conv {
@@ -86,9 +85,9 @@ func (c *conv) Dims(dims ...int) *conv {
 	return c
 }
 
-// InputDims sets the input dimensions of the convolutional Operator, for internal
-// use. This is REQUIRED unless the Operator is being loaded. InputDims will panic
-// if called after the Operator has been Finalized.
+// InputDims sets the input dimensions of the convolutional Operator, for internal use. This is
+// REQUIRED unless the Operator is being loaded. InputDims will panic if called after the Operator
+// has been Finalized.
 func (c *conv) InputDims(dims ...int) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -98,9 +97,8 @@ func (c *conv) InputDims(dims ...int) *conv {
 	return c
 }
 
-// Filter sets the size of the filter in each dimension. This is REQUIRED unless
-// the Operator is being loaded. Filter will panic if called after the Operator has
-// been Finalized.
+// Filter sets the size of the filter in each dimension. This is REQUIRED unless the Operator is
+// being loaded. Filter will panic if called after the Operator has been Finalized.
 func (c *conv) Filter(dims ...int) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -110,12 +108,11 @@ func (c *conv) Filter(dims ...int) *conv {
 	return c
 }
 
-// Stride sets the space between centers of filter regions. Stride defaults to the
-// same size as the filters. Stride will panic if called after the Operator has been
-// Finalized.
+// Stride sets the space between centers of filter regions. Stride defaults to the same size as the
+// filters. Stride will panic if called after the Operator has been Finalized.
 //
-// At finalization, the convolutional Operator will return error if any dimensions
-// of Stride are larger than Filter.
+// At finalization, the convolutional Operator will return error if any dimensions of Stride are
+// larger than Filter.
 //
 // Stride is optional.
 func (c *conv) Stride(dims ...int) *conv {
@@ -127,9 +124,8 @@ func (c *conv) Stride(dims ...int) *conv {
 	return c
 }
 
-// Pad sets the amount of padding on both ends for each dimension. Pad defaults to
-// none, if not provided. Pad will panic if called after the Operator has been
-// Finalized.
+// Pad sets the amount of padding on both ends for each dimension. Pad defaults to none, if not
+// provided. Pad will panic if called after the Operator has been Finalized.
 func (c *conv) Pad(dims ...int) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -139,8 +135,8 @@ func (c *conv) Pad(dims ...int) *conv {
 	return c
 }
 
-// PadValue sets the value of the padding around the input. The default can be set
-// by SetDefault("conv-padding").
+// PadValue sets the value of the padding around the input. The default can be set by
+// SetDefault("conv-padding").
 func (c *conv) PadValue(v float64) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -150,9 +146,8 @@ func (c *conv) PadValue(v float64) *conv {
 	return c
 }
 
-// Depth sets the number of 'copies' of the output that are going to be made.
-// Different parameters are used for each depth. Depth defaults to 1, and will cause
-// Finalize to error if less than 1.
+// Depth sets the number of 'copies' of the output that are going to be made. Different parameters
+// are used for each depth. Depth defaults to 1, and will cause Finalize to error if less than 1.
 func (c *conv) Depth(d int) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -162,8 +157,8 @@ func (c *conv) Depth(d int) *conv {
 	return c
 }
 
-// ParamSharing sets whether or not the parameters within a certain Depth are shared
-// for all copies of the filter. ParamSharing defaults to false.
+// ParamSharing sets whether or not the parameters within a certain Depth are shared for all copies
+// of the filter. ParamSharing defaults to false.
 func (c *conv) ParamSharing(share bool) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -173,8 +168,8 @@ func (c *conv) ParamSharing(share bool) *conv {
 	return c
 }
 
-// WithBiases adds bias inputs and parameters to each filter. Convolutional
-// operators default to having biases.
+// WithBiases adds bias inputs and parameters to each filter. Convolutional operators default to
+// having biases.
 func (c *conv) WithBiases() *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -184,8 +179,8 @@ func (c *conv) WithBiases() *conv {
 	return c
 }
 
-// NoBiases removes the bias inputs and paramaters from each filter. Convolutional
-// operators default to having biases.
+// NoBiases removes the bias inputs and paramaters from each filter. Convolutional operators
+// default to having biases.
 func (c *conv) NoBiases() *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -195,8 +190,8 @@ func (c *conv) NoBiases() *conv {
 	return c
 }
 
-// BiasValue sets the value multiplied by the biases. The default value can be set
-// by SetDefault("conv-bias")
+// BiasValue sets the value multiplied by the biases. The default value can be set by
+// SetDefault("conv-bias")
 func (c *conv) BiasValue(b float64) *conv {
 	if c.convConstructor == nil {
 		panic("convolutional Operator has already been finalized")
@@ -220,9 +215,8 @@ func (c *conv) MustSize() int {
 	return size
 }
 
-// Size returns the expected size of the convolutional Operator, before it has been
-// finalized. If the configuration is invalid, it will return error, just as
-// Finalize would.
+// Size returns the expected size of the convolutional Operator, before it has been finalized. If
+// the configuration is invalid, it will return error, just as Finalize would.
 func (c *conv) Size() (int, error) {
 	if c.Outs != nil {
 		return c.Outs.Size() * c.Dep, nil
@@ -313,8 +307,8 @@ func (c *conv) Size() (int, error) {
 	return c.Outs.Size() * c.Dep, nil
 }
 
-// returns whether or not the point in the inputs (set of inputs plus padding) is
-// outside the boundaries of the actual inputs
+// returns whether or not the point in the inputs (set of inputs plus padding) is outside the
+// boundaries of the actual inputs
 func (c *conv) isPadding(point []int) bool {
 	p := make([]int, len(point))
 	copy(p, point)
@@ -332,9 +326,8 @@ func (c *conv) isPadding(point []int) bool {
 
 // out_p does not include depth
 func (c *conv) inputsTo(out_p []int) []int {
-	// here, underscores are used as a suffix to indicate the type of the
-	// variable. For example, x_i would be an index with name 'x', and x_p would
-	// be an n-dimensional point with name 'x'.
+	// here, underscores are used as a suffix to indicate the type of the variable. For example,
+	// x_i would be an index with name 'x', and x_p would be an n-dimensional point with name 'x'.
 
 	// topleft is the top-left base point for the filter, including padding
 	topLeft_p := mapMult(out_p, c.Str)
@@ -408,15 +401,13 @@ func (t *conv) Finalize(n *bs.Node) error {
 		return err
 	}
 
-	if size != n.Size() {
-		return errors.Errorf("Mismatch between expected size and actual (%d != %d)", size, n.Size())
-	} else if t.Ins.Size() != n.NumInputs() {
+	if t.Ins.Size() != n.NumInputs() {
 		return errors.Errorf("Mismatch between expected number of inputs and actual (%d != %d)", t.Ins.Size(), n.NumInputs())
 	}
 
 	var wLen int
 	if !t.ShareParams {
-		wLen = (t.Filt.Size() + t.NumBiases) * n.Size()
+		wLen = (t.Filt.Size() + t.NumBiases) * size
 	} else {
 		wLen = (t.Filt.Size() + t.NumBiases) * t.Dep
 	}
@@ -438,8 +429,17 @@ func (t *conv) Blank() interface{} {
 	return t
 }
 
+func (t *conv) OutputShape(ins []*bs.Node) (tensors.Tensor, error) {
+	_, err := t.Size()
+	if err != nil {
+		return tensors.Tensor{}, err
+	}
+
+	return tensors.NewTensor(t.Outs.Dims), nil
+}
+
 func (t *conv) Evaluate(n *bs.Node, values []float64) {
-	inputs := n.CopyOfInputs()
+	inputs := n.AllInputs()
 
 	f := func(v int) {
 		depth := v / t.Outs.Size()

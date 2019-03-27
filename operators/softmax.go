@@ -1,8 +1,8 @@
 package operators
 
 import (
-	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
+	"github.com/sharnoff/tensors"
 	"math"
 )
 
@@ -18,16 +18,21 @@ func (t softmax) TypeString() string {
 }
 
 func (t softmax) Finalize(n *bs.Node) error {
-	if n.NumInputs() != n.Size() {
-		return errors.Errorf("Number of inputs not equal to size. (%d != %d)", n.NumInputs(), n.Size())
+	return nil
+}
+
+func (t softmax) OutputShape(inputs []*bs.Node) (tensors.Tensor, error) {
+	ls := make([]tensors.Tensor, len(inputs))
+	for i := range ls {
+		ls[i] = inputs[i].Shape()
 	}
 
-	return nil
+	return bs.ConcatShape(ls)
 }
 
 func (t softmax) Evaluate(n *bs.Node, values []float64) {
 	// This could be multithreaded with forking.
-	inputs := n.CopyOfInputs()
+	inputs := n.AllInputs()
 
 	var sum float64
 	for i := range values {

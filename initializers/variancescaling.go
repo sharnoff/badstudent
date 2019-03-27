@@ -13,15 +13,14 @@ type varianceScaling struct {
 
 const defaultVarianceMode string = "avg"
 
-// VarianceScaling returns the variance scaling initializer, which has 3 modes and a
-// user-defined scaling factor. The three modes can be set by In, Out, and Avg. It
-// defaults to Avg.
+// VarianceScaling returns the variance scaling initializer, which has 3 modes and a user-defined
+// scaling factor. The three modes can be set by In, Out, and Avg. It defaults to Avg.
 func VarianceScaling() *varianceScaling {
 	return &varianceScaling{defaultVarianceMode, defaultValue["varscl-factor"]}
 }
 
-// Factor sets the scaling factor to be used for the Initializer. The default factor
-// can be set by SetDefault("varscl-factor")
+// Factor sets the scaling factor to be used for the Initializer. The default factor can be set by
+// SetDefault("varscl-factor")
 func (v *varianceScaling) Factor(f float64) *varianceScaling {
 	v.factor = f
 	return v
@@ -39,8 +38,8 @@ func (v *varianceScaling) Out() *varianceScaling {
 	return v
 }
 
-// Avg sets the scaling to be based on the average of the numbers of input and
-// output values to the Node.
+// Avg sets the scaling to be based on the average of the numbers of input and output values to the
+// Node.
 func (v *varianceScaling) Avg() *varianceScaling {
 	v.mode = "avg"
 	return v

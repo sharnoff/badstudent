@@ -1,7 +1,6 @@
 package badstudent
 
 import (
-	"github.com/pkg/errors"
 	"sort"
 )
 
@@ -25,7 +24,7 @@ func num(ng *nodeGroup) int {
 // Addition is much more expensive if the nodeGroup is already
 // continuous.
 func (ng *nodeGroup) add(nodes ...*Node) bool {
-	if ng.values != nil {
+	if ng.isContinuous() {
 		for _, n := range nodes {
 			if n.group != nil {
 				return false
@@ -47,7 +46,7 @@ func (ng *nodeGroup) add(nodes ...*Node) bool {
 	if ng.values != nil {
 		ng.values = make([]float64, ng.sumVals[len(ng.sumVals)-1])
 		for i, n := range ng.nodes {
-			n.values = ng.values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
+			n.values.Values = ng.values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
 		}
 	}
 
@@ -69,7 +68,7 @@ func (ng *nodeGroup) makeContinuous() bool {
 
 	ng.values = make([]float64, ng.sumVals[len(ng.sumVals)-1])
 	for i, n := range ng.nodes {
-		n.values = ng.values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
+		n.values.Values = ng.values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
 		n.group = ng
 	}
 
@@ -82,6 +81,10 @@ func (ng *nodeGroup) isContinuous() bool {
 
 // Duplicates the internal slices to reduce unused capacity
 func (ng *nodeGroup) trim() {
+	if ng == nil || num(ng) == 0 {
+		return
+	}
+
 	nodes := make([]*Node, len(ng.nodes))
 	copy(nodes, ng.nodes)
 	ng.nodes = nodes
@@ -93,17 +96,17 @@ func (ng *nodeGroup) trim() {
 	return
 }
 
-// Sets the values of the nodeGroup and each Node's status to 'inputsChanged'
+// Sets the values of the nodeGroup
 func (ng *nodeGroup) setValues(values []float64) error {
-	if ng.sumVals[len(ng.sumVals)-1] != len(values) {
-		return errors.Errorf("Number of given values and group values don't match (%d != %d)", len(values), ng.sumVals[len(ng.sumVals)-1])
+	if ng.size() != len(values) {
+		return SizeMismatchError{ng.size(), len(values), "given values"}
 	}
 
 	if ng.values != nil {
 		copy(ng.values, values)
 	} else {
 		for i, n := range ng.nodes {
-			n.values = values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
+			n.values.Values = values[ng.sumVals[i]-n.Size() : ng.sumVals[i]]
 		}
 	}
 
@@ -124,7 +127,7 @@ func (ng *nodeGroup) getValues(dupe bool) []float64 {
 	} else { // not continuous
 		values := make([]float64, ng.size())
 		for i, n := range ng.nodes {
-			copy(values[ng.sumVals[i]-n.Size():], n.values)
+			copy(values[ng.sumVals[i]-n.Size():], n.values.Values)
 		}
 		return values
 	}
@@ -172,27 +175,4 @@ func (ng *nodeGroup) value(index int) float64 {
 	}
 
 	return ng.nodes[i].Value(index)
-}
-
-// Returns a channel that iterates over the values of the group
-func (ng *nodeGroup) valueIterator() chan float64 {
-	ch := make(chan float64)
-	if ng.isContinuous() {
-		go func() {
-			for _, v := range ng.values {
-				ch <- v
-			}
-		}()
-	} else {
-		go func() {
-			for _, n := range ng.nodes {
-				for v := range n.valueIterator() {
-					ch <- v
-				}
-			}
-			close(ch)
-		}()
-	}
-
-	return ch
 }

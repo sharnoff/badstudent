@@ -11,10 +11,8 @@ type uniform struct {
 	lower, upper float64
 }
 
-// Uniform returns RNG that gives values uniformly spread between its bounds, which
-// can be set by Range
-//
-//
+// Uniform returns RNG that gives values uniformly spread between its bounds, which can be set by
+// Range
 func Uniform() *uniform {
 	return &uniform{defaultValue["uniform-lower"], defaultValue["uniform-upper"]}
 }

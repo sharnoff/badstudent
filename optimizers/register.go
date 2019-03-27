@@ -3,16 +3,13 @@ package optimizers
 import bs "github.com/sharnoff/badstudent"
 
 func init() {
-	list := map[string]func() bs.Optimizer{
-		SGD().TypeString(): func() bs.Optimizer { return SGD() },
+	list := []interface{}{
+		func() bs.Optimizer { return SGD() },
 	}
 
-	for s, f := range list {
-		err := bs.RegisterOptimizer(s, f)
-		if err != nil {
-			panic(err.Error())
-		}
+	if err := bs.RegisterAll(list); err != nil {
+		panic(err)
 	}
 
-	bs.SetDefaultOptimizer(list[SGD().TypeString()])
+	bs.SetDefaultOptimizer(func() bs.Optimizer{ return SGD() })
 }

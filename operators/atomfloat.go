@@ -1,8 +1,6 @@
-// This file is essentially a copy of the methods found at "go.uber.org/atomic" that
-// pertain to float64. It has been stored here to ensure forward compatibility with
-// operations withing pool.go and conv.go
-//
-// The source can also be found at https://github.com/uber-go/atomic
+// This file is heavily based on the methods found at "go.uber.org/atomic" that pertain to float64.
+// It has been stored here to ensure forward compatibility. The original source can be found at
+// https://github.com/uber-go/atomic
 package operators
 
 import (

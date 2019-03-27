@@ -1,33 +1,38 @@
 package badstudent
 
-import (
-	"github.com/pkg/errors"
-)
+// setError sets the Network's stored error to the error provided. If net.panicErrors is true,
+// setError will additionally panic the error it is given.
+func (net *Network) setError(e error) {
+	net.err = e
+	if net.panicErrors {
+		panic(e)
+	}
+}
 
-// Nodes returns the list of all Nodes in the Network, sorted by ID such that
-// Nodes()[n] has id=n. Nodes returns a copy of the slice; it can be modified freely
-// but will not update if more Nodes are added to the Network.
+// Nodes returns the list of all Nodes in the Network, sorted by ID such that Nodes()[n] has id=n.
+// The slice that Nodes returns is a copy; it can be modified freely but will not update if more
+// Nodes are added to the Network.
 func (net *Network) Nodes() []*Node {
 	ns := make([]*Node, len(net.nodesByID))
 	copy(ns, net.nodesByID)
 	return ns
 }
 
-// ResetIter resets the number of iterations the Network has gone through to the
-// provided value. Usually this will be zero, and is done to reset after loading.
-//
-// It will return error if iter < 0.
+// ResetIter resets the Network's tracked number of iterations to the provided value. This could be
+// done to bring HyperParameters that are dependent upon iterations back to an earlier state. The
+// given value will usually be zero. ResetIter will return ErrNegativeIter if the iteration given
+// is less than zero.
 func (net *Network) ResetIter(iter int) error {
 	if iter < 0 {
-		return errors.Errorf("iter < 0 (%d)", iter)
+		return ErrNegativeIter
 	}
 
-	net.iter = iter
+	net.longIter = iter
 	return nil
 }
 
-// Returns the number of expected input values to the Network
-// Returns -1 if the network has not been completed yet
+// InputSize returns the total number of expected input values to the Network. If the Network has
+// not been finalized yet, InputSize will return -1.
 func (net *Network) InputSize() int {
 	if net.stat < finalized {
 		return -1
@@ -36,8 +41,8 @@ func (net *Network) InputSize() int {
 	return net.inputs.size()
 }
 
-// Returns the number of values that the network outputs
-// Returns -1 if the network has not been completed yet
+// OutputSize returns the total number of expected output values to the Network. If the Network has
+// not been finalized yet, OutputSize will return -1.
 func (net *Network) OutputSize() int {
 	if net.stat < finalized {
 		return -1
@@ -46,8 +51,8 @@ func (net *Network) OutputSize() int {
 	return net.outputs.size()
 }
 
-// Returns the current values of the network inputs.
-// Returns nil if the network has not been completed yet
+// CurrentInputs returns a copy of the current input values to the Network. CurrentInputs returns
+// nil if the Network has not been finalized yet.
 func (net *Network) CurrentInputs() []float64 {
 	if net.stat < finalized {
 		return nil
@@ -56,49 +61,68 @@ func (net *Network) CurrentInputs() []float64 {
 	return net.inputs.getValues(true)
 }
 
-// sets the inputs of the network to the provided values
-// returns an error if the length of the provided values doesn't
-// match the size of the network inputs
+// SetInputs sets the inputs of the Network to the provided values. If the Network has not been
+// finalized, ErrNetNotFinalized will be returned (or panicked if PanicErrors() has been called).
+// Else, if the number of inputs does not equal the total size of the inputs (given by
+// InputSize()), type SizeMismatchError will be returned.
 func (net *Network) SetInputs(inputs []float64) error {
 	if net.stat < finalized {
-		return errors.Errorf("Network is not complete")
+		if net.panicErrors {
+			panic(ErrNetNotFinalized)
+		}
+
+		return ErrNetNotFinalized
 	}
 
 	err := net.inputs.setValues(inputs)
-	if err == nil {
-		net.stat = finalized
+	if err != nil {
+		err = SizeMismatchError{net.inputs.size(), len(inputs), "inputs"}
+
+		if net.panicErrors {
+			panic(err)
+		}
+
+		return err
 	}
+
+	net.stat = finalized
 	return err
 }
 
-// Returns a copy of the Network's output values for the given inputs
-// Returns an error if given the wrong number of inputs
+// GetOutputs returns a copy of the Network's output values for the given inputs. SetInputs() will
+// be called regardless of whether or not the given inputs are actually the current inputs. There
+// are several error conditions:
+//	(0) If the Network has not been finalized: ErrNetNotFinalized,
+//	(1) If the number of inputs doesn't match the total size: type SizeMismatchError,
+// If PanicErrors() has been called, error conditions will be panicked, not returned.
 func (net *Network) GetOutputs(inputs []float64) ([]float64, error) {
 	if err := net.SetInputs(inputs); err != nil {
-		return nil, errors.Wrapf(err, "Setting inputs failed\n")
+		return nil, err
 	}
 
-	if err := net.evaluate(false); err != nil {
-		return nil, errors.Wrapf(err, "Failed to evaluate all Nodes in Network\n")
+	// evaluate should only return ErrNetNotFinalized, but we check anyways for future-proofing.
+	if err := net.evaluate(); err != nil {
+		return nil, err
 	}
 
 	return net.outputs.getValues(true), nil
 }
 
-// SetCost changes the CostFunction of the Network, post-Finalization. This allows
-// different CostFunctions for training and final model evaluation.
-func (net *Network) SetCost(cf CostFunction) *Network {
-	if net.err != nil {
-		return net
+// ChangeCost changes the CostFunction of the Network, after it has been finalized. This allows
+// different CostFunctions for training and final model evaluation. If cf is nil, ChangeCost will
+// panic with type NilArgError.
+func (net *Network) ChangeCost(cf CostFunction) *Network {
+	if cf == nil {
+		panic(NilArgError{"CostFunction"})
 	}
 
 	net.cf = cf
 	return net
 }
 
-// Error returns any errors encountered while constructing the network, particularly
-// while shaping the architecture. This method will always return nil after the
-// Network has been Finalized.
+// Error returns any errors encountered while constructing the Network, particularly while creating
+// the architecture. This method will always return nil after the Network has been SUCESSFULLY
+// finalized.
 func (net *Network) Error() error {
 	return net.err
 }

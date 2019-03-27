@@ -1,18 +1,16 @@
 package costfuncs
 
-import (
-	bs "github.com/sharnoff/badstudent"
-)
+import bs "github.com/sharnoff/badstudent"
 
 func init() {
-	list := map[string]func() bs.CostFunction{
-		MSE().TypeString(): func() bs.CostFunction { return MSE() },
+	list := []interface{}{
+		func() bs.CostFunction { return CrossEntropy() },
+		func() bs.CostFunction { return Huber(0) },
+		func() bs.CostFunction { return MSE() },
+		func() bs.CostFunction { return Abs() },
 	}
 
-	for s, f := range list {
-		err := bs.RegisterCostFunction(s, f)
-		if err != nil {
-			panic(err.Error())
-		}
+	if err := bs.RegisterAll(list); err != nil {
+		panic(err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/pkg/errors"
 	bs "github.com/sharnoff/badstudent"
 	"github.com/sharnoff/badstudent/utils"
+	"github.com/sharnoff/tensors"
 )
 
 type poolConstructor struct {
@@ -36,16 +37,15 @@ func basePool() pool {
 // ***************************************************
 // Customization Functions
 //
-// Note: All functions are repated for both pooling operators because golang does
-// not support inheritance.
+// Note: All functions are repated for both pooling operators because golang does not support
+// inheritance.
 // ***************************************************
 
-// Dims sets the output dimensions of the pooling Operator. It does not check that
-// the dimensions are valid until it is Finalized. Dims will panic if called after
-// the pooling Operator has been Finalized.
+// Dims sets the output dimensions of the pooling Operator. It does not check that the dimensions
+// are valid until it is Finalized. Dims will panic if called after the pooling Operator has been
+// Finalized.
 //
-// Dims is optional, as it can be calculated from other information, but it can also
-// be provided.
+// Dims is optional, as it can be calculated from other information, but it can also be provided.
 //
 // If any dimensions collapse to a size of 1, they must still be included.
 func (p *avgPool) Dims(dims ...int) *avgPool {
@@ -340,18 +340,25 @@ func (p *pool) Size() (int, error) {
 }
 
 func (p *pool) Finalize(n *bs.Node) error {
-	size, err := p.Size()
+	_, err := p.Size()
 	if err != nil {
 		return err
 	}
 
-	if size != n.Size() {
-		return errors.Errorf("Mismatch between expected size and actual (%d != %d)", size, n.Size())
-	} else if p.Ins.Size() != n.NumInputs() {
+	if p.Ins.Size() != n.NumInputs() {
 		return errors.Errorf("Mismatch between expected number of inputs and actual (%d != %d)", p.Ins.Size(), n.NumInputs())
 	}
 
 	return nil
+}
+
+func (p *pool) OutputShape(inputs []*bs.Node) (tensors.Tensor, error) {
+	_, err := p.Size()
+	if err != nil {
+		return tensors.Tensor{}, err
+	}
+
+	return tensors.NewTensor(p.Outs.Dims), nil
 }
 
 func (p *pool) Get() interface{} {
@@ -424,7 +431,7 @@ func (t *avgPool) TypeString() string {
 }
 
 func (t *avgPool) Evaluate(n *bs.Node, values []float64) {
-	inputs := n.CopyOfInputs()
+	inputs := n.AllInputs()
 
 	f := func(v int) {
 		ins := t.inputsTo(v)
@@ -481,7 +488,7 @@ func (t *maxPool) Finalize(n *bs.Node) error {
 }
 
 func (t *maxPool) Evaluate(n *bs.Node, values []float64) {
-	inputs := n.CopyOfInputs()
+	inputs := n.AllInputs()
 
 	// note: switches will sometimes be zero
 	t.switches = make([]int, len(values))

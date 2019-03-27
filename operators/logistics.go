@@ -11,8 +11,8 @@ import (
 
 type logistic int8
 
-// Logistic returns an elementwise application of the logistic (or sigmoid) function
-// that implements badstudent.Operator.
+// Logistic returns an elementwise application of the logistic (or sigmoid) function that
+// implements badstudent.Operator.
 func Logistic() logistic {
 	return logistic(0)
 }
@@ -42,8 +42,7 @@ func (t logistic) Deriv(n *bs.Node, index int) float64 {
 
 type tanh int8
 
-// Tanh returns an Operator that performs an element-wise application of
-// the tanh() function.
+// Tanh returns an Operator that performs an element-wise application of the tanh() function.
 func Tanh() tanh {
 	return tanh(0)
 }
@@ -71,8 +70,8 @@ func (t tanh) Deriv(n *bs.Node, index int) float64 {
 
 type softsign int8
 
-// Softsign (not to be confused with softplus) returns the Softsign activation
-// function. It is similar in shape to Tanh and Logistic.
+// Softsign (not to be confused with softplus) returns the Softsign activation function. It is
+// similar in shape to Tanh and Logistic.
 func Softsign() softsign {
 	return softsign(0)
 }

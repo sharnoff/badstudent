@@ -7,30 +7,27 @@ import (
 )
 
 func init() {
-	list := map[string]func() bs.Operator{
-		LeakyReLU(0).TypeString(): func() bs.Operator { return LeakyReLU(0) },
-		Identity().TypeString():   func() bs.Operator { return Identity() },
-		Logistic().TypeString():   func() bs.Operator { return Logistic() },
-		Softplus().TypeString():   func() bs.Operator { return Softplus() },
-		Softsign().TypeString():   func() bs.Operator { return Softsign() },
-		AvgPool().TypeString():    func() bs.Operator { return AvgPool() },
-		MaxPool().TypeString():    func() bs.Operator { return MaxPool() },
-		Neurons().TypeString():    func() bs.Operator { return Neurons() },
-		Softmax().TypeString():    func() bs.Operator { return Softmax() },
-		PReLU().TypeString():      func() bs.Operator { return PReLU() },
-		Conv().TypeString():       func() bs.Operator { return Conv() },
-		Mult().TypeString():       func() bs.Operator { return Mult() },
-		Tanh().TypeString():       func() bs.Operator { return Tanh() },
-		ReLU().TypeString():       func() bs.Operator { return ReLU() },
-		ELU().TypeString():        func() bs.Operator { return ELU() },
-		Add().TypeString():        func() bs.Operator { return Add() },
+	list := []interface{}{
+		func() bs.Operator { return LeakyReLU(0) },
+		func() bs.Operator { return Identity() },
+		func() bs.Operator { return Logistic() },
+		func() bs.Operator { return Softplus() },
+		func() bs.Operator { return Softsign() },
+		func() bs.Operator { return Neurons(0) },
+		func() bs.Operator { return AvgPool() },
+		func() bs.Operator { return MaxPool() },
+		func() bs.Operator { return Softmax() },
+		func() bs.Operator { return PReLU() },
+		func() bs.Operator { return Conv() },
+		func() bs.Operator { return Mult() },
+		func() bs.Operator { return Tanh() },
+		func() bs.Operator { return ReLU() },
+		func() bs.Operator { return ELU() },
+		func() bs.Operator { return Add() },
 	}
 
-	for s, f := range list {
-		err := bs.RegisterOperator(s, f)
-		if err != nil {
-			panic(err.Error())
-		}
+	if err := bs.RegisterAll(list); err != nil {
+		panic(err)
 	}
 
 	defaultValue = map[string]float64{

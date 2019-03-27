@@ -1,5 +1,10 @@
 package badstudent
 
+import (
+	"github.com/sharnoff/tensors"
+	"fmt"
+)
+
 // Storable is an optional additional interface for any element that can provided to
 // Nodes (Operator, Optimizer, Hyperparameter, Penalty). It allows saving and
 // loading with files for types that implement it, and is a required part of some
@@ -28,20 +33,6 @@ type JSONAble interface {
 	Blank() interface{}
 }
 
-/*
-// delayed for later
-
-// Uses is a list of the necessary values for the process of backpropagation
-// and weight updating.
-//
-// Uses is primarily an optimization tool, allowing the model to not store
-// some values, and instead just calculate them once. Improper use of Uses will
-// result in sub-par performance
-type Uses struct {
-	InputValues, OwnValues bool
-}
-*/
-
 // Operator is the basic interface for defining Layers and Activation
 // functions. All Operators must also be either a Layer or an Elementwise in
 // order to function at runtime. Additionally, some Operators may be
@@ -67,6 +58,9 @@ type Operator interface {
 // this category (ex: Softmax)
 type Layer interface {
 	Operator
+
+	// OutputShape gives the dimensions of the outputs of the layer.
+	OutputShape([]*Node) (tensors.Tensor, error)
 
 	// Evaluate calculates the values of the Operator and sets the values of
 	// the provided slice to those values.
@@ -98,8 +92,7 @@ type Elementwise interface {
 // Adjustable is an extension on top of Operator for those that have adjustable
 // weights
 type Adjustable interface {
-	// Operator
-	// Storable
+	Operator
 
 	// Grad returns the gradient of the weight specified by the given index. This is
 	// determined, in part, using the deltas (derviative w.r.t. total cost) of the
@@ -122,6 +115,8 @@ func isValid(o Operator) bool {
 	} else if _, ok := o.(Elementwise); ok {
 		return true
 	}
+
+	fmt.Println("is neither")
 
 	return false
 }
@@ -153,7 +148,8 @@ type Optimizer interface {
 	Needs() []string
 }
 
-// Penalty changes the gradients provided by Operators.
+// Penalty changes the gradients provided by Operators. Penalty's must be able to be called on
+// multiple different Nodes.
 type Penalty interface {
 	// TypeString returns a constant, unique string corresponding to the type of the
 	// Penalty. It is only called during saving and loading.

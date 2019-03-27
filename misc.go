@@ -17,8 +17,8 @@ func format(fs ...float64) (str string) {
 	return
 }
 
-// PrintResult returns a function that prints the results of training, in addition
-// to a final function to be called once the training has finished.
+// PrintResult returns a function that prints the results of training, in addition to a final
+// function to be called once the training has finished.
 //
 // It prints: Iteration, Status Cost, Status Percent, Test Cost, Test Percent
 //
@@ -52,9 +52,9 @@ func PrintResult() (func(Result), func()) {
 
 // CorrectRound is the default 'IsCorrect' function to be provided to TrainArgs
 //
-// A value is correct if it is on the same side of 0.5 as the target
-// -- values less than 0.5 round to 0, and values greater than or equal to 0.5 round to 1
-// This requires 'targets' to consist of either '0' or '1'
+// A value is correct if it is on the same side of 0.5 as the target -- values less than 0.5 round
+// to 0, and values greater than or equal to 0.5 round to 1 This requires 'targets' to consist of
+// either '0' or '1'
 func CorrectRound(outs, targets []float64) bool {
 	for i := range outs {
 		// rounds to 0 if a number is < 0.5, 1 if ≥ 0.5. Tanh reduces the value to (0, 1)
