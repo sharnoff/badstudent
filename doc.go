@@ -86,3 +86,4 @@
 // desire. Loading is equally simple, with:
 //
 //		func (net *Network) Load(dirPath string) (*Network, error)
+package badstudent
