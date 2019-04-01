@@ -159,7 +159,8 @@ func (err DoesNotFitError) Error() string {
 		erroneous += fmt.Sprintf(" Outputs expected %d, got %d.", err.Net.OutputSize(), len(err.D.Outputs))
 	}
 
-	return fmt.Sprintf(testData+"from Iteration %d didn't match Network dimensions.%s", err.Iteration, erroneous)
+	return fmt.Sprintf(testData+"from Iteration %d didn't match Network dimensions (Expected len in, out = %d, %d, got %d, %d).%s",
+		err.Iteration, err.Net.InputSize(), err.Net.OutputSize(), len(err.D.Inputs), len(err.D.Outputs), erroneous)
 }
 
 // Train does what it says. It trains the Network following the conditions laid out in the
@@ -285,6 +286,7 @@ func (net *Network) Train(args TrainArgs) error {
 
 		var cost float64
 		var correct bool
+
 		if len(d.Outputs) != 0 { // will always be true for non-recurrent
 			cost = net.cf.Cost(outs, d.Outputs)
 			correct = args.IsCorrect(outs, d.Outputs)
@@ -317,11 +319,11 @@ func (net *Network) Train(args TrainArgs) error {
 			}
 		}
 
-		statusCost += cost
-		if correct {
-			statusCorrect += 1.0
-		}
 		if len(d.Outputs) != 0 {
+			statusCost += cost
+			if correct {
+				statusCorrect += 1.0
+			}
 			statusSize++
 		}
 

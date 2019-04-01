@@ -849,6 +849,8 @@ func (n *Node) SetDelay(delay int) *Node {
 		n.delayDeltas <- make([]float64, len(n.values.Values))
 	}
 
+	n.host.hasDelay = true
+
 	return n
 }
 

@@ -622,7 +622,7 @@ func Load(path string) (*Network, error) {
 					return nil, FieldIOError{"Node (" + name + ")", "HyperParameter (" + hpName + ")", "load", err}
 				}
 
-				n.AddHP(name, hp)
+				n.AddHP(hpName, hp)
 
 				// AddHP can set net.Error() to one of two errors:
 				//	NilArgError, if hp == nil, or
